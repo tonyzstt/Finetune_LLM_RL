@@ -1,0 +1,7 @@
+cache/
+data/logs/
+data/output/
+*.ipynb
+**/__pycache__/
+*.pdf
+processed_dataset/**
