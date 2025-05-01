@@ -1,3 +1,4 @@
+# WSY
 cache/
 data/logs/
 data/output/
@@ -5,3 +6,9 @@ data/output/
 **/__pycache__/
 *.pdf
 processed_dataset/**
+ckp/**
+
+# ZST
+
+
+# ZFY
