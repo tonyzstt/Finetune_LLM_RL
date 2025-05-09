@@ -1,0 +1,42 @@
+{
+  "os": "Linux-6.8.0-59-generic-x86_64-with-glibc2.35",
+  "python": "CPython 3.10.16",
+  "startedAt": "2025-05-09T04:00:55.336964Z",
+  "program": "/home/tonyzst/Desktop/CS224R-Project/DPO/train.py",
+  "codePath": "DPO/train.py",
+  "git": {
+    "remote": "https://github.com/tonyzstt/CS224R-Project.git",
+    "commit": "64a3e7d66d6803f327b8fc7a2df081b3191efe9e"
+  },
+  "email": "Tonyzst@outlook.com",
+  "root": "/home/tonyzst/Desktop/CS224R-Project/DPO",
+  "host": "tonyzst-System-Product-Name",
+  "executable": "/home/tonyzst/anaconda3/envs/cs224r-project/bin/python",
+  "codePathLocal": "train.py",
+  "cpu_count": 16,
+  "cpu_count_logical": 24,
+  "gpu": "NVIDIA GeForce RTX 4090",
+  "gpu_count": 1,
+  "disk": {
+    "/": {
+      "total": "1475695190016",
+      "used": "1147183915008"
+    }
+  },
+  "memory": {
+    "total": "33376464896"
+  },
+  "cpu": {
+    "count": 16,
+    "countLogical": 24
+  },
+  "gpu_nvidia": [
+    {
+      "name": "NVIDIA GeForce RTX 4090",
+      "memoryTotal": "25757220864",
+      "cudaCores": 16384,
+      "architecture": "Ada"
+    }
+  ],
+  "cudaVersion": "12.8"
+}

@@ -1,0 +1,7 @@
+{"time":"2025-05-09T00:00:55.34012022-04:00","level":"INFO","msg":"stream: starting","core version":"0.19.10","symlink path":"/home/tonyzst/Desktop/CS224R-Project/DPO/wandb/run-20250509_000055-emszl6a6/logs/debug-core.log"}
+{"time":"2025-05-09T00:00:55.607501087-04:00","level":"INFO","msg":"created new stream","id":"emszl6a6"}
+{"time":"2025-05-09T00:00:55.60755319-04:00","level":"INFO","msg":"stream: started","id":"emszl6a6"}
+{"time":"2025-05-09T00:00:55.607650899-04:00","level":"INFO","msg":"writer: Do: started","stream_id":"emszl6a6"}
+{"time":"2025-05-09T00:00:55.607725251-04:00","level":"INFO","msg":"sender: started","stream_id":"emszl6a6"}
+{"time":"2025-05-09T00:00:55.607817627-04:00","level":"INFO","msg":"handler: started","stream_id":"emszl6a6"}
+{"time":"2025-05-09T00:00:55.908023703-04:00","level":"INFO","msg":"Starting system monitor"}
