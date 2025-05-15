@@ -1,4 +1,4 @@
-from typing import Literal
+from typing import List
 import json
 
 import torch
@@ -10,11 +10,15 @@ from transformers import Trainer, TrainingArguments, AutoModelForCausalLM, AutoT
 class SFTDataset(Dataset):
     def __init__(
         self, 
-        data_path: str = '/home/sabrina/CS224R-Project/processed_dataset/processed_warm_start_dataset.json',
+        data_path: List[str],
         tokenizer: PreTrainedTokenizer = None,
-        max_length: int = 1024
+        max_length: int = 512
     ):
-        self.data = json.load(open(data_path, "r"))
+        self.data = []
+        for path in data_path:
+            with open(path, 'r') as f:
+                data = json.load(f)
+                self.data.extend(data)
         self.tokenizer = tokenizer
         self.max_length = max_length
         
@@ -84,13 +88,3 @@ class SFTDataset(Dataset):
             'attention_mask': attention_mask,
             'labels': labels
         }
-
-
-if __name__ == "__main__":
-    tokenizer = AutoTokenizer.from_pretrained("Qwen/Qwen2.5-0.5B")
-    dataset = SFTDataset(tokenizer=tokenizer)
-    dataloader = torch.utils.data.DataLoader(dataset, batch_size=1, collate_fn=dataset.collate_fn)
-    
-    for batch in dataloader:
-        print(batch)
-        break

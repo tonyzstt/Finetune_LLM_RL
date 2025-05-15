@@ -1,5 +1,5 @@
 model_name: "Qwen/Qwen2.5-0.5B"
-data_path: "../processed_dataset/processed_warm_start_dataset.json"
+data_path_list: ["../processed_dataset/processed_warm_start_dataset.json", "../processed_dataset/processed_smol_talk_dataset.json"]
 batch_size: 2
 max_length: 512
 learning_rate: 0.00001
