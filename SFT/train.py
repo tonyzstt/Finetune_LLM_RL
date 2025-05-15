@@ -48,10 +48,8 @@ def train(model, dataloader, optimizer, device, scheduler, num_epochs):
                     grad_norm = get_grad_norm(model)
                     tqdm.write(f"epoch: {epoch}, iter: {iter}, loss: {loss.item()}, lr: {scheduler.get_last_lr()[0]}, grad_norm: {grad_norm}")
                     wandb.log({"loss": loss.item(), "lr": scheduler.get_last_lr()[0], "grad_norm": grad_norm})
-                if iter % 100 == 0:
-                    model.save_pretrained(f"models/sft_model_{iter}")
                     
-                pbar.set_postfix(loss=loss.item(), lr=scheduler.get_last_lr()[0], grad_norm=grad_norm)
+                pbar.set_postfix(loss=loss.item(), lr=scheduler.get_last_lr()[0])
                 
 
 if __name__ == "__main__":
@@ -69,10 +67,11 @@ if __name__ == "__main__":
     wandb.init(project="sft", config=config)
     
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print("Using device:", device)
     
-    tokenizer = AutoTokenizer.from_pretrained(model_name, attn_implementation="eager")
+    tokenizer = AutoTokenizer.from_pretrained(model_name)
     tokenizer.pad_token = tokenizer.eos_token
-    model = AutoModelForCausalLM.from_pretrained(model_name, attn_implementation="eager").to(device)
+    model = AutoModelForCausalLM.from_pretrained(model_name).to(device)
     
     dataset = SFTDataset(data_path=data_path, tokenizer=tokenizer, max_length=max_length)
     dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
