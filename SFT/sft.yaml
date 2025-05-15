@@ -1,0 +1,6 @@
+model_name: "Qwen/Qwen2.5-0.5B"
+data_path: "../processed_dataset/processed_warm_start_dataset.json"
+batch_size: 2
+max_length: 512
+learning_rate: 0.00001
+num_epochs: 3
