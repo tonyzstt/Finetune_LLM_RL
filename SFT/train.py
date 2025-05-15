@@ -1,7 +1,6 @@
 import yaml
 
 import torch
-from torch.nn import functional as F
 from torch.utils.data import DataLoader
 from transformers import AutoTokenizer, AutoModelForCausalLM, get_cosine_schedule_with_warmup
 from tqdm import tqdm

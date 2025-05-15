@@ -3,16 +3,15 @@ import json
 
 import torch
 from torch.utils.data import Dataset
-from datasets import load_dataset
-from transformers import Trainer, TrainingArguments, AutoModelForCausalLM, AutoTokenizer, PreTrainedTokenizer
+from transformers import PreTrainedTokenizer
 
 
 class SFTDataset(Dataset):
     def __init__(
         self, 
         data_path: List[str],
-        tokenizer: PreTrainedTokenizer = None,
-        max_length: int = 512
+        tokenizer: PreTrainedTokenizer,
+        max_length: int
     ):
         self.data = []
         for path in data_path:
