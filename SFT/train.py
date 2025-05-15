@@ -1,7 +1,6 @@
 import yaml
 
 import torch
-from torch.nn import functional as F
 from torch.utils.data import DataLoader
 from transformers import AutoTokenizer, AutoModelForCausalLM, get_cosine_schedule_with_warmup
 from tqdm import tqdm
@@ -58,7 +57,7 @@ if __name__ == "__main__":
         config = yaml.safe_load(f)
         
     model_name = config['model_name']
-    data_path = config['data_path']
+    data_path_list = config['data_path_list']
     num_epochs = config['num_epochs']
     batch_size = config['batch_size']
     learning_rate = config['learning_rate']
@@ -73,7 +72,7 @@ if __name__ == "__main__":
     tokenizer.pad_token = tokenizer.eos_token
     model = AutoModelForCausalLM.from_pretrained(model_name).to(device)
     
-    dataset = SFTDataset(data_path=data_path, tokenizer=tokenizer, max_length=max_length)
+    dataset = SFTDataset(data_path=data_path_list, tokenizer=tokenizer, max_length=max_length)
     dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
     
     optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate)
