@@ -1,4 +1,5 @@
 from torch.utils.data import Dataset
+from dataclasses import dataclass
 
 class DPODataset(Dataset):
     def __init__(self, data, tokenizer, max_length=1024):
@@ -30,3 +31,17 @@ class DPODataset(Dataset):
             'input_ids_rejected': enc_rejected['input_ids'].squeeze(0),
             'attention_mask_rejected': enc_rejected['attention_mask'].squeeze(0),
         }
+    
+
+@dataclass
+class DPOConfig:
+    model_name: str
+    data_path: str
+    batch_size: int
+    max_length: int
+    learning_rate: float
+    num_epochs: int
+    beta: float
+    log_steps: int
+    deepspeed_config: str
+    save_steps: int

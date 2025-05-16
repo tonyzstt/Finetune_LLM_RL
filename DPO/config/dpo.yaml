@@ -1,7 +1,10 @@
 model_name: "Qwen/Qwen2.5-0.5B"
 data_path: "../processed_dataset/ultrafeedback_binarized_train_prefs_small.json"
-batch_size: 2
+batch_size: 4
 max_length: 512
 learning_rate: 0.000001
-num_epochs: 10
+num_epochs: 1
 beta: 0.5
+log_steps: 100
+save_steps: 10000
+deepspeed_config: "config/ds_z1_config.json"
