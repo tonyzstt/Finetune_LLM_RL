@@ -30,19 +30,14 @@ def preprocess_countdown_dataset(dataset, output_file):
             "target": target,
             "numbers": numbers
         }
-        prompt = f"""<|im_start|>system
-        A conversation between User and Assistant. The user asks a question, and the Assistant solves it. The assistant directly provides the user with the answer without any intermediate steps.
-        <|im_end|>
-        <|im_start|>user
-        Using the numbers {numbers}, create an equation that equals {target}. You can use basic arithmetic operations (+, -, *, /) and each number can only be used once. Return the final answer in <answer> </answer> tags, for example <answer> (1 + 2) / 3 </answer>
-        <|im_end|>
-        <|im_start|>assistant
-        """
-        output1 = model(prompt, max_new_tokens=50, do_sample=True, temperature=0.7, top_p=0.9, top_k=50)[0]["generated_text"][len(prompt):].strip()
-        output2 = model(prompt, max_new_tokens=50, do_sample=True, temperature=0.9, top_p=1.0, top_k=30)[0]["generated_text"][len(prompt):].strip()
-        # print(f"Prompt: {prompt}")
-        # print(f"Output 1: {output1}")
-        # print(f"Output 2: {output2}")
+        prompt = f"""<|system|>A conversation between User and Assistant. The user asks a question, and the Assistant solves it. The assistant first thinks about the reasoning process in the mind and then provides the user with the answer.
+<|user|>Using the numbers {numbers}, create an equation that equals {target}. You can use basic arithmetic operations (+, -, *, /) and each number can only be used once. Show your work in <think> </think> tags. And return the final answer in <answer> </answer> tags, for example <answer> (1 + 2) / 3 </answer>.
+<|assistant|>"""
+        output1 = model(prompt, max_new_tokens=512, do_sample=True, temperature=0.7, top_p=0.9, top_k=50)[0]["generated_text"][len(prompt):].strip()
+        output2 = model(prompt, max_new_tokens=512, do_sample=True, temperature=0.9, top_p=1.0, top_k=30)[0]["generated_text"][len(prompt):].strip()
+        # print(f"Prompt: {prompt}\n\n")
+        # print(f"Output 1: {output1}\n\n")
+        # print(f"Output 2: {output2}\n\n")
         solution1 = countdown.extract_solution(output1)
         solution2 = countdown.extract_solution(output2)
         # print(f"Solution 1: {solution1}")
@@ -52,9 +47,11 @@ def preprocess_countdown_dataset(dataset, output_file):
         if score1 > score2:
             chosen = solution1
             rejected = solution2
-        else:
+        elif score1 < score2:
             chosen = solution2
             rejected = solution1
+        else:
+            continue
 
         message = {
             "input": prompt,
