@@ -47,14 +47,14 @@ def preprocess_countdown_dataset(dataset, output_file):
         solution2 = countdown.extract_solution(output2)
         # print(f"Solution 1: {solution1}")
         # print(f"Solution 2: {solution2}")
-        score1 = countdown.compute_score(solution1, ground_truth)
-        score2 = countdown.compute_score(solution2, ground_truth)
+        score1 = countdown.compute_score(output1, ground_truth)
+        score2 = countdown.compute_score(output2, ground_truth)
         if score1 > score2:
-            chosen = output1
-            rejected = output2
+            chosen = solution1
+            rejected = solution2
         else:
-            chosen = output2
-            rejected = output1
+            chosen = solution2
+            rejected = solution1
 
         message = {
             "input": prompt,
