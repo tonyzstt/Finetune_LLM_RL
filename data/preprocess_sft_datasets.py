@@ -4,10 +4,24 @@ from datasets import load_dataset
 from tqdm import tqdm
 
 
-def preprocess_warm_start_dataset(dataset, output_file):
+def check_conversation_length(message, max_length=256):
+    total_length = sum(len(msg["content"].split(" ")) for msg in message)
+    return total_length <= max_length
+
+
+def preprocess_warm_start_dataset(dataset, output_file, use_system_message=False, max_length=256, overwrite=False):
     """
     Preprocess the warm start dataset to add a system message to each entry.
     """
+    
+    if os.path.exists(output_file) and not overwrite:
+        print(f"Output file {output_file} already exists. Use overwrite=True to overwrite.")
+        return
+    else:
+        # Remove the output file if it exists
+        if os.path.exists(output_file):
+            os.remove(output_file)
+        print(f"Output file {output_file} removed to overwrite.")
     
     # Open the JSON array
     with open(output_file, "w") as f:
@@ -17,6 +31,11 @@ def preprocess_warm_start_dataset(dataset, output_file):
         "role": "system",
         "content": "A conversation between User and Assistant. The user asks a question, and the Assistant solves it. "
                    "The assistant first thinks about the reasoning process in the mind and then provides the user with the answer."
+    }
+    
+    logger = {
+        'total_entries': len(dataset),
+        'filtered_entries': 0,
     }
     
     for item in tqdm(dataset):
@@ -29,13 +48,25 @@ def preprocess_warm_start_dataset(dataset, output_file):
             "content": item["completion"]
         }
         
-        message = {
-            "messages": [
-                system_message,
-                user_message,
-                assistant_message
-            ],
-        }
+        if use_system_message:
+            message = {
+                "messages": [
+                    system_message,
+                    user_message,
+                    assistant_message
+                ],
+            }
+        else:
+            message = {
+                "messages": [
+                    user_message,
+                    assistant_message
+                ],
+            }
+            
+        if not check_conversation_length(message["messages"], max_length):
+            logger['filtered_entries'] += 1
+            continue
         
         message = json.dumps(message, indent=4)
         with open(output_file, "a") as f:
@@ -50,12 +81,22 @@ def preprocess_warm_start_dataset(dataset, output_file):
         f.write(']')
     
     print(f"Preprocessed dataset saved to {output_file}")
+    print(f"Filtered {logger['filtered_entries']} entries from {logger['total_entries']}, remaining {logger['total_entries'] - logger['filtered_entries']} entries")
     
     
-def preprocess_smol_talk_dataset(dataset, output_file):
+def preprocess_smol_talk_dataset(dataset, output_file, use_system_message=False, max_length=256, overwrite=False):
     """
     Preprocess the smol talk dataset to add a system message to each entry.
     """
+    
+    if os.path.exists(output_file) and not overwrite:
+        print(f"Output file {output_file} already exists. Use overwrite=True to overwrite.")
+        return
+    else:
+        # Remove the output file if it exists
+        if os.path.exists(output_file):
+            os.remove(output_file)
+        print(f"Output file {output_file} removed to overwrite.")
     
     with open(output_file, "a") as f:
         f.write('[')
@@ -65,10 +106,49 @@ def preprocess_smol_talk_dataset(dataset, output_file):
         "content": ""   # TODO: Add a system message for the smol talk dataset
     }
     
-    for item in tqdm(dataset):        
-        message = {
-            "messages": [system_message] + item["messages"]
-        }
+    logger = {
+        'total_entries': len(dataset),
+        'filtered_entries': 0,
+    }
+    
+    for item in tqdm(dataset):
+        first_user_message = None
+        for message in item["messages"]:
+            if message["role"] == "user":
+                first_user_message = message
+                break
+        first_assistant_message = None
+        for message in item["messages"]:
+            if message["role"] == "assistant":
+                first_assistant_message = message
+                break
+            
+        if first_user_message is None or first_assistant_message is None:
+            print(f"Missing user or assistant message in item: {item}")
+            logger['filtered_entries'] += 1
+            continue
+        
+        if use_system_message:
+            message = {
+                "messages": [system_message, first_user_message, first_assistant_message]
+            }
+        else:
+            message = {
+                "messages": [first_user_message, first_assistant_message]
+            }
+            
+        # Check if message contains one user and one assistant message
+        if not (len(message["messages"]) == 2 and \
+                (message["messages"][-1]["role"] == "user" and message["messages"][-2]["role"] == "assistant" or 
+                 message["messages"][-1]["role"] == "assistant" and message["messages"][-2]["role"] == "user")):
+            print(f"Invalid message format: {message}")
+            logger['filtered_entries'] += 1
+            continue
+            
+        if not check_conversation_length(message["messages"], max_length):
+            logger['filtered_entries'] += 1
+            continue
+        
         # indent the JSON for better readability
         message = json.dumps(message, indent=4)
         with open(output_file, "a") as f:
@@ -83,49 +163,21 @@ def preprocess_smol_talk_dataset(dataset, output_file):
         f.write(']\n')
         
     print(f"Preprocessed dataset saved to {output_file}")
+    print(f"Filtered {logger['filtered_entries']} entries from {logger['total_entries']}, remaining {logger['total_entries'] - logger['filtered_entries']} entries")
     
     
-def preprocess_sft_datasets():
+def preprocess_sft_datasets(use_system_message=False, max_length=256, overwrite=False, split="train"):
     output_dir = "../processed_dataset"
     os.makedirs(output_dir, exist_ok=True)
     
-    warm_start_dataset = load_dataset("Asap7772/cog_behav_all_strategies", split="train")
-    warm_start_output_file = os.path.join(output_dir, "processed_warm_start_dataset.json")
-    preprocess_warm_start_dataset(warm_start_dataset, warm_start_output_file)
+    warm_start_dataset = load_dataset("Asap7772/cog_behav_all_strategies", split=split)
+    warm_start_output_file = os.path.join(output_dir, f"processed_warm_start_dataset_{split}.json")
+    preprocess_warm_start_dataset(warm_start_dataset, warm_start_output_file, use_system_message, max_length, overwrite)
     
-    # smol_talk_dataset = load_dataset("HuggingFaceTB/smol-smoltalk", split='train')
-    # smol_talk_output_file = os.path.join(output_dir, "processed_smol_talk_dataset.json")
-    # preprocess_smol_talk_dataset(smol_talk_dataset, smol_talk_output_file)
-    
-
-def remove_too_long_conversations(input_file, max_length=256):
-    """
-    Remove conversations that are too long from the dataset.
-    """
-    
-    with open(input_file, "r") as f:
-        data = json.load(f)
-        
-    print(f"Loaded {len(data)} entries from {input_file}")
-    print(f"Filtering conversations longer than {max_length} characters...")
-    
-    filtered_data = []
-    for item in data:
-        conversation = item["messages"]
-        max_len = max(len(msg["content"].split(" ")) for msg in conversation)
-        if max_len <= max_length:
-            filtered_data.append(item)
-    
-    # output file name is the same as input file except with "_filter_over_{max_length}" added
-    output_file = input_file.replace(".json", f"_filter_over_{max_length}.json")
-    with open(output_file, "w") as f:
-        json.dump(filtered_data, f, indent=4)
-    
-    print(f"Filtered {len(data) - len(filtered_data)}, remaining {len(filtered_data)} entries")
-    print(f"Filtered dataset saved to {output_file}")
+    smol_talk_dataset = load_dataset("HuggingFaceTB/smol-smoltalk", split=split)
+    smol_talk_output_file = os.path.join(output_dir, f"processed_smol_talk_dataset_{split}.json")
+    preprocess_smol_talk_dataset(smol_talk_dataset, smol_talk_output_file, use_system_message, max_length, overwrite)
     
     
 if __name__ == "__main__":
-    pass
-    # remove_too_long_conversations("../processed_dataset/processed_warm_start_dataset.json", max_length=256)
-    # remove_too_long_conversations("../processed_dataset/processed_smol_talk_dataset.json", max_length=256)
+    preprocess_sft_datasets(split='test')
