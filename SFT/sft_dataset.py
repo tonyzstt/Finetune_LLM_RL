@@ -36,12 +36,13 @@ class SFTDataset(Dataset):
             
             if role == 'system':
                 if content.strip():
-                    conversation += f"<|system|>{content}\n"
+                    conversation += f"<|im_start|>system\n{content}<|im_end|>\n"
             elif role == 'user':
-                conversation += f"<|user|>{content}\n"
+                conversation += f"<|im_start|>user\n{content}<|im_end|>\n"
             elif role == 'assistant':
+                conversation += "<|im_start|>assistant\n"
                 start = len(conversation)
-                conversation += f"<|assistant|>{content}\n"
+                conversation += f"{content}<|im_end|>\n"
                 end = len(conversation)
                 assistant_spans.append((start, end))
         
