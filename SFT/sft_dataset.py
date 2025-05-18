@@ -40,8 +40,9 @@ class SFTDataset(Dataset):
             elif role == 'user':
                 conversation += f"<|user|>{content}\n"
             elif role == 'assistant':
+                conversation += "<|assistant|>\n"
                 start = len(conversation)
-                conversation += f"<|assistant|>{content}\n"
+                conversation += f"{content}\n"
                 end = len(conversation)
                 assistant_spans.append((start, end))
         
