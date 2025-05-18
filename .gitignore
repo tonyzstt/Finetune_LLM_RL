@@ -12,4 +12,6 @@ ckp/**
 **/models/**
 **/wandb/**
 **/ckpts/**
+
 # ZFY
+*.pt
