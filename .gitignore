@@ -11,4 +11,5 @@ ckp/**
 # ZST
 **/models/**
 **/wandb/**
+**/ckpts/**
 # ZFY
