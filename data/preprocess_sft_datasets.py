@@ -96,3 +96,36 @@ def preprocess_sft_datasets():
     # smol_talk_dataset = load_dataset("HuggingFaceTB/smol-smoltalk", split='train')
     # smol_talk_output_file = os.path.join(output_dir, "processed_smol_talk_dataset.json")
     # preprocess_smol_talk_dataset(smol_talk_dataset, smol_talk_output_file)
+    
+
+def remove_too_long_conversations(input_file, max_length=256):
+    """
+    Remove conversations that are too long from the dataset.
+    """
+    
+    with open(input_file, "r") as f:
+        data = json.load(f)
+        
+    print(f"Loaded {len(data)} entries from {input_file}")
+    print(f"Filtering conversations longer than {max_length} characters...")
+    
+    filtered_data = []
+    for item in data:
+        conversation = item["messages"]
+        max_len = max(len(msg["content"].split(" ")) for msg in conversation)
+        if max_len <= max_length:
+            filtered_data.append(item)
+    
+    # output file name is the same as input file except with "_filter_over_{max_length}" added
+    output_file = input_file.replace(".json", f"_filter_over_{max_length}.json")
+    with open(output_file, "w") as f:
+        json.dump(filtered_data, f, indent=4)
+    
+    print(f"Filtered {len(data) - len(filtered_data)}, remaining {len(filtered_data)} entries")
+    print(f"Filtered dataset saved to {output_file}")
+    
+    
+if __name__ == "__main__":
+    pass
+    # remove_too_long_conversations("../processed_dataset/processed_warm_start_dataset.json", max_length=256)
+    # remove_too_long_conversations("../processed_dataset/processed_smol_talk_dataset.json", max_length=256)
