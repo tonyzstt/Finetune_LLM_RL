@@ -11,10 +11,10 @@ import countdown
 
 def preprocess_countdown_dataset(dataset, output_file):
     """
-    Preprocess the warm start dataset to add a system message to each entry.
+    Preprocess the countdown dataset by adding preferred and dispreferred responses with corresponding scores.
     """
     
-    # TODO: change model if needed
+    # TODO: change the model to SFT model
     model = pipeline("text-generation", model="Qwen/Qwen2.5-0.5B", device=0)
     
     # Open the JSON array
@@ -30,9 +30,10 @@ def preprocess_countdown_dataset(dataset, output_file):
             "target": target,
             "numbers": numbers
         }
-        prompt = f"""<|system|>A conversation between User and Assistant. The user asks a question, and the Assistant solves it. The assistant first thinks about the reasoning process in the mind and then provides the user with the answer.
-<|user|>Using the numbers {numbers}, create an equation that equals {target}. You can use basic arithmetic operations (+, -, *, /) and each number can only be used once. Show your work in <think> </think> tags. And return the final answer in <answer> </answer> tags, for example <answer> (1 + 2) / 3 </answer>.
-<|assistant|>"""
+        system = "<|im_start|>system\nA conversation between User and Assistant. The user asks a question, and the Assistant solves it. The assistant first thinks about the reasoning process in the mind and then provides the user with the answer.<|im_end|>\n"
+        user = f"<|im_start|>user\nUsing the numbers {numbers}, create an equation that equals {target}. You can use basic arithmetic operations (+, -, *, /) and each number can only be used once. Show your work in <think> </think> tags. And return the final answer in <answer> </answer> tags, for example <answer> (1 + 2) / 3 </answer> <|im_end|>\n"
+        assistant = "<|im_start|>assistant\n"
+        prompt = user + assistant
         output1 = model(prompt, max_new_tokens=512, do_sample=True, temperature=0.7, top_p=0.9, top_k=50)[0]["generated_text"][len(prompt):].strip()
         output2 = model(prompt, max_new_tokens=512, do_sample=True, temperature=0.9, top_p=1.0, top_k=30)[0]["generated_text"][len(prompt):].strip()
         # print(f"Prompt: {prompt}\n\n")
@@ -46,17 +47,24 @@ def preprocess_countdown_dataset(dataset, output_file):
         score2 = countdown.compute_score(output2, ground_truth)
         if score1 > score2:
             chosen = solution1
+            chosen_score = score1
             rejected = solution2
+            rejected_score = score2
         elif score1 < score2:
             chosen = solution2
+            chosen_score = score2
             rejected = solution1
+            rejected_score = score1
+        # filtering out for ties
         else:
             continue
 
         message = {
             "input": prompt,
             "chosen": chosen,
-            "rejected": rejected
+            "chosen_score": chosen_score,
+            "rejected": rejected,
+            "rejected_score": rejected_score,
         }
         
         message = json.dumps(message, indent=4, ensure_ascii=False)
