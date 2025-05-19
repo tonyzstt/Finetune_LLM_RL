@@ -1,0 +1,6 @@
+model_name: "Qwen/Qwen2.5-0.5B"
+data_path: "../processed_dataset/ultrafeedback_binarized_train_prefs_small.json"
+batch_size: 4
+max_length: 512
+learning_rate: 0.0000001
+num_epochs: 1
