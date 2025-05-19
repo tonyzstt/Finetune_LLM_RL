@@ -41,11 +41,12 @@ def rloo_loss(chosen_lp, rejected_lp, chosen_reward, rejected_reward, k):
     assert k == 2
     assert chosen_lp.shape == rejected_lp.shape
     assert chosen_reward.shape == rejected_reward.shape
-    RLOOloss = 0.5 * (chosen_reward - rejected_reward) * chosen_lp + 0.5 * (rejected_reward - chosen_reward) * rejected_lp
+    RLOOloss = -(1/k * (chosen_reward - rejected_reward) * chosen_lp + 1/k * (rejected_reward - chosen_reward) * rejected_lp)
+    
     return RLOOloss
 
 
-def train(model, dataloader, optimizer, device, scheduler, num_epochs, task, k=2):
+def train(model, dataloader, optimizer, device, scheduler, num_epochs, task, k=2, reward_model=None):
     model.train()
     iter = 0
 
@@ -69,13 +70,7 @@ def train(model, dataloader, optimizer, device, scheduler, num_epochs, task, k=2
 
                 if task == "ultrafeedback":
 
-                    # load reward model
-                    base_model = AutoModelForCausalLM.from_pretrained("Qwen/Qwen2.5-0.5B")
-                    reward_model = BTModel(base_model)
-                    reward_model.to(device)
-                    reward_model.load_state_dict(torch.load("bt_model.pt", map_location="cuda"))
-                    reward_model.eval()
-
+                    # get the reward from the reward model
                     chosen_reward   = reward_model(chosen_ids,   attention_mask=chosen_mask)
                     rejected_reward = reward_model(rejected_ids, attention_mask=rejected_mask)
 
@@ -139,6 +134,13 @@ if __name__ == "__main__":
         num_training_steps=num_training_steps,
     )
 
-    # TODO: change to countdown if needed
-    train(model, dataloader, optimizer, device, scheduler, num_epochs, "ultrafeedback", 2)
+    # load reward model, only needed for ultrafeedback
+    base_model = AutoModelForCausalLM.from_pretrained("Qwen/Qwen2.5-0.5B")
+    reward_model = BTModel(base_model)
+    reward_model.to(device)
+    reward_model.load_state_dict(torch.load("bt_model.pt", map_location="cuda"))
+    reward_model.eval()
+
+    # TODO: change to countdown if needed   
+    train(model, dataloader, optimizer, device, scheduler, num_epochs, "ultrafeedback", 2, reward_model)
     model.save_pretrained("models/rloo_model")
