@@ -43,7 +43,7 @@ def train(model, dataloader, optimizer, device, scheduler, num_epochs):
                 iter += 1
                 pbar.update(1)
                 
-                if iter % 10 == 0:
+                if iter % 100 == 0:
                     grad_norm = get_grad_norm(model)
                     tqdm.write(f"epoch: {epoch}, iter: {iter}, loss: {loss.item()}, lr: {scheduler.get_last_lr()[0]}, grad_norm: {grad_norm}")
                     wandb.log({"loss": loss.item(), "lr": scheduler.get_last_lr()[0], "grad_norm": grad_norm})
@@ -87,3 +87,4 @@ if __name__ == "__main__":
     
     train(model, dataloader, optimizer, device, scheduler, num_epochs)
     model.save_pretrained("models/sft_model")
+    tokenizer.save_pretrained("models/sft_model")
