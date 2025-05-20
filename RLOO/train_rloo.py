@@ -161,12 +161,15 @@ if __name__ == "__main__":
         num_training_steps=num_training_steps,
     )
 
-    # load reward model, only needed for ultrafeedback
-    base_model = AutoModelForCausalLM.from_pretrained(bt_model_name)
-    reward_model = BTModel(base_model)
-    reward_model.to(device)
-    reward_model.load_state_dict(torch.load(bt_model_weights_path, map_location="cuda"))
-    reward_model.eval()
+    if task == "ultrafeedback":
+        # load reward model, only needed for ultrafeedback
+        base_model = AutoModelForCausalLM.from_pretrained(bt_model_name)
+        reward_model = BTModel(base_model)
+        reward_model.to(device)
+        reward_model.load_state_dict(torch.load(bt_model_weights_path, map_location="cuda"))
+        reward_model.eval()
+    else:
+        reward_model = None
 
     train(model, tokenizer, dataloader, optimizer, device, scheduler, num_epochs, task, k, max_length, reward_model)
     model.save_pretrained("models/rloo_model")
