@@ -1,6 +1,11 @@
 from vllm import LLM, SamplingParams
 from openai import OpenAI
 from config import API_KEY
+import os
+import sys
+import argparse
+from tqdm import tqdm
+from dataset.ultrafeedback import UltraFeedbackDataset
 
 # Example code using vllm to run peft models
 # First generate the model checkpoint using 'python zero_to_fp32.py . .'
@@ -32,7 +37,7 @@ def generate_response(llm, prompt):
     """
     Generate the response from the model
     """
-    sampler = SamplingParams(max_tokens=64, temperature=0.7)
+    sampler = SamplingParams(max_tokens=1280)
     outputs = llm.generate(prompt, sampler)
     return outputs[0].outputs[0].text.strip()
 
@@ -52,12 +57,28 @@ def get_reward(client, prompt, response):
 
 if __name__ == "__main__":
 
-    model_dir = "/home/tonyzst/Desktop/CS224R-Project/DPO/ckpts/dpo_peft/last" 
-    prompts = [
-        "Explain why the sky is blue in one short paragraph."
-    ]     
+    # take args called model_path 
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--model_path", type=str, required=True)
+    parser.add_argument("--dataset_path", type=str, required=True)
+    args = parser.parse_args()
+
+    dataset = UltraFeedbackDataset(args.dataset_path)
 
     client = get_client()
-    llm = get_model(model_dir)
-    responses = [generate_response(llm, prompt) for prompt in prompts]
-    rewards = [get_reward(client, prompt, response) for prompt, response in zip(prompts, responses)]
+    llm = get_model(args.model_path)
+    rewards = []
+
+    for item in tqdm(dataset):
+
+        prompt = item["prompt"]
+        response = generate_response(llm, prompt)
+        reward = get_reward(client, prompt, response)
+
+        reward = float(reward.split(":")[-1])
+        rewards.append(reward)
+
+    print(f"Average reward: {sum(rewards) / len(rewards)}")
+
+
+    
