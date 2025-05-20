@@ -3,7 +3,7 @@ import json
 import os
 import sys
 from tqdm import tqdm
-from transformers import pipeline
+from transformers import AutoTokenizer, AutoModelForCausalLM
 
 sys.path.append(os.path.join(os.path.dirname(__file__)))
 import countdown
@@ -15,7 +15,8 @@ def preprocess_countdown_dataset(dataset, output_file):
     """
     
     # TODO: change the model to SFT model
-    model = pipeline("text-generation", model="Qwen/Qwen2.5-0.5B", device=0)
+    tokenizer = AutoTokenizer.from_pretrained("Qwen/Qwen2.5-0.5B")
+    model = AutoModelForCausalLM.from_pretrained("Qwen/Qwen2.5-0.5B").cuda()
     
     # Open the JSON array
     with open(output_file, "w") as f:
@@ -34,27 +35,24 @@ def preprocess_countdown_dataset(dataset, output_file):
         user = f"<|im_start|>user\nUsing the numbers {numbers}, create an equation that equals {target}. You can use basic arithmetic operations (+, -, *, /) and each number can only be used once. Show your work in <think> </think> tags. And return the final answer in <answer> </answer> tags, for example <answer> (1 + 2) / 3 </answer> <|im_end|>\n"
         assistant = "<|im_start|>assistant\n"
         prompt = user + assistant
-        output1 = model(prompt, max_new_tokens=512, do_sample=True, temperature=0.7, top_p=0.9, top_k=50)[0]["generated_text"][len(prompt):].strip()
-        output2 = model(prompt, max_new_tokens=512, do_sample=True, temperature=0.9, top_p=1.0, top_k=30)[0]["generated_text"][len(prompt):].strip()
+        input_ids = tokenizer(prompt, return_tensors="pt").input_ids.cuda()
+        output_ids1 = model.generate(input_ids, max_new_tokens=512, do_sample=True, temperature=0.7, top_p=0.9, top_k=50, pad_token_id=tokenizer.eos_token_id)
+        output_ids2 = model.generate(input_ids, max_new_tokens=512, do_sample=True, temperature=0.9, top_p=1.0, top_k=30, pad_token_id=tokenizer.eos_token_id)
+        output1 = tokenizer.decode(output_ids1[0][input_ids.shape[1]:], skip_special_tokens=True).strip()
+        output2 = tokenizer.decode(output_ids2[0][input_ids.shape[1]:], skip_special_tokens=True).strip()
         # print(f"Prompt: {prompt}\n\n")
         # print(f"Output 1: {output1}\n\n")
         # print(f"Output 2: {output2}\n\n")
-        solution1 = countdown.extract_solution(output1)
-        solution2 = countdown.extract_solution(output2)
-        # print(f"Solution 1: {solution1}")
-        # print(f"Solution 2: {solution2}")
         score1 = countdown.compute_score(output1, ground_truth)
         score2 = countdown.compute_score(output2, ground_truth)
+        # print(f"Score 1: {score1}")
+        # print(f"Score 2: {score2}")
         if score1 > score2:
-            chosen = solution1
-            chosen_score = score1
-            rejected = solution2
-            rejected_score = score2
+            chosen = output1
+            rejected = output2
         elif score1 < score2:
-            chosen = solution2
-            chosen_score = score2
-            rejected = solution1
-            rejected_score = score1
+            chosen = output2
+            rejected = output1
         # filtering out for ties
         else:
             continue
@@ -62,9 +60,8 @@ def preprocess_countdown_dataset(dataset, output_file):
         message = {
             "input": prompt,
             "chosen": chosen,
-            "chosen_score": chosen_score,
             "rejected": rejected,
-            "rejected_score": rejected_score,
+            "ground_truth": ground_truth,
         }
         
         message = json.dumps(message, indent=4, ensure_ascii=False)
@@ -72,7 +69,7 @@ def preprocess_countdown_dataset(dataset, output_file):
             f.write(message + ",\n")
 
         num -= 1
-        if num == 0:
+        if num == 0: 
             break
             
     # Remove the last comma and close the JSON array
