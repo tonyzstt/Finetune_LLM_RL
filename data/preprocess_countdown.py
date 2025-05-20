@@ -5,11 +5,11 @@ import sys
 from tqdm import tqdm
 from transformers import AutoTokenizer, AutoModelForCausalLM
 
-sys.path.append(os.path.join(os.path.dirname(__file__)))
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'eval')))
 import countdown
 
 
-def preprocess_countdown_dataset(dataset, output_file):
+def preprocess_countdown_dataset(dataset, output_file, max_length=1024, max_tokens=512):
     """
     Preprocess the countdown dataset by adding preferred and dispreferred responses with corresponding scores.
     """
@@ -35,9 +35,11 @@ def preprocess_countdown_dataset(dataset, output_file):
         user = f"<|im_start|>user\nUsing the numbers {numbers}, create an equation that equals {target}. You can use basic arithmetic operations (+, -, *, /) and each number can only be used once. Show your work in <think> </think> tags. And return the final answer in <answer> </answer> tags, for example <answer> (1 + 2) / 3 </answer> <|im_end|>\n"
         assistant = "<|im_start|>assistant\n"
         prompt = user + assistant
-        input_ids = tokenizer(prompt, return_tensors="pt").input_ids.cuda()
-        output_ids1 = model.generate(input_ids, max_new_tokens=512, do_sample=True, temperature=0.7, top_p=0.9, top_k=50, pad_token_id=tokenizer.eos_token_id)
-        output_ids2 = model.generate(input_ids, max_new_tokens=512, do_sample=True, temperature=0.9, top_p=1.0, top_k=30, pad_token_id=tokenizer.eos_token_id)
+        enc_prompt = tokenizer(prompt, padding='max_length', truncation=True, max_length=max_length, return_tensors="pt")
+        input_ids = enc_prompt['input_ids'].cuda()
+        attention_mask = enc_prompt['attention_mask'].cuda()
+        output_ids1 = model.generate(input_ids=input_ids, attention_mask=attention_mask, max_new_tokens=max_tokens, do_sample=True, temperature=0.7, top_p=0.9, top_k=50, pad_token_id=tokenizer.eos_token_id)
+        output_ids2 = model.generate(input_ids=input_ids, attention_mask=attention_mask, max_new_tokens=max_tokens, do_sample=True, temperature=0.9, top_p=1.0, top_k=30, pad_token_id=tokenizer.eos_token_id)
         output1 = tokenizer.decode(output_ids1[0][input_ids.shape[1]:], skip_special_tokens=True).strip()
         output2 = tokenizer.decode(output_ids2[0][input_ids.shape[1]:], skip_special_tokens=True).strip()
         # print(f"Prompt: {prompt}\n\n")
