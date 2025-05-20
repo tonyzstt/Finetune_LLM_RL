@@ -56,6 +56,7 @@ if __name__ == "__main__":
     batch_size = config['batch_size']
     learning_rate = config['learning_rate']
     max_length = config['max_length']
+    task = config['task']
 
     wandb.init(project="bt", config=config)
 
@@ -68,7 +69,7 @@ if __name__ == "__main__":
     model = BTModel(base_model).to(device)
 
     data = json.load(open(data_path, "r"))
-    dataset = RLOODataset(data=data, tokenizer=tokenizer, task="ultrafeedback", max_length=max_length)
+    dataset = RLOODataset(data=data, tokenizer=tokenizer, task=task, max_length=max_length)
     dataloader = DataLoader(dataset, shuffle=True)
 
     optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate)
