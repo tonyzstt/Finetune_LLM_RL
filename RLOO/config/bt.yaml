@@ -4,3 +4,4 @@ batch_size: 4
 max_length: 1024
 learning_rate: 0.000001
 num_epochs: 1
+task: "reward"

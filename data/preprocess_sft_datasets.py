@@ -4,12 +4,16 @@ from datasets import load_dataset
 from tqdm import tqdm
 
 
-def check_conversation_length(message, max_length=256):
-    total_length = sum(len(msg["content"].split(" ")) for msg in message)
-    return total_length <= max_length
+def check_conversation_length(message, max_input_length=128, max_output_length=512):
+    """
+    Check if the conversation word count is within the specified limits.
+    """
+    input_length = sum(len(m["content"].split(" ")) for m in message if m["role"] in ["system", "user"])
+    output_length = sum(len(m["content"].split(" ")) for m in message if m["role"] == "assistant")
+    return input_length <= max_input_length and output_length <= max_output_length
 
 
-def preprocess_warm_start_dataset(dataset, output_file, use_system_message=False, max_length=256, overwrite=False):
+def preprocess_warm_start_dataset(dataset, output_file, max_length, overwrite, use_system_message=False, ):
     """
     Preprocess the warm start dataset to add a system message to each entry.
     """
@@ -18,12 +22,10 @@ def preprocess_warm_start_dataset(dataset, output_file, use_system_message=False
         print(f"Output file {output_file} already exists. Use overwrite=True to overwrite.")
         return
     else:
-        # Remove the output file if it exists
         if os.path.exists(output_file):
             os.remove(output_file)
         print(f"Output file {output_file} removed to overwrite.")
     
-    # Open the JSON array
     with open(output_file, "w") as f:
         f.write('[')
     
@@ -63,8 +65,8 @@ def preprocess_warm_start_dataset(dataset, output_file, use_system_message=False
                     assistant_message
                 ],
             }
-            
-        if not check_conversation_length(message["messages"], max_length):
+        
+        if not check_conversation_length(message["messages"], max_length[0], max_length[1]):
             logger['filtered_entries'] += 1
             continue
         
@@ -84,7 +86,7 @@ def preprocess_warm_start_dataset(dataset, output_file, use_system_message=False
     print(f"Filtered {logger['filtered_entries']} entries from {logger['total_entries']}, remaining {logger['total_entries'] - logger['filtered_entries']} entries")
     
     
-def preprocess_smol_talk_dataset(dataset, output_file, use_system_message=False, max_length=256, overwrite=False):
+def preprocess_smol_talk_dataset(dataset, output_file, max_length, overwrite, use_system_message=False, ):
     """
     Preprocess the smol talk dataset to add a system message to each entry.
     """
@@ -144,8 +146,8 @@ def preprocess_smol_talk_dataset(dataset, output_file, use_system_message=False,
             print(f"Invalid message format: {message}")
             logger['filtered_entries'] += 1
             continue
-            
-        if not check_conversation_length(message["messages"], max_length):
+        
+        if not check_conversation_length(message["messages"], max_length[0], max_length[1]):
             logger['filtered_entries'] += 1
             continue
         
@@ -166,18 +168,19 @@ def preprocess_smol_talk_dataset(dataset, output_file, use_system_message=False,
     print(f"Filtered {logger['filtered_entries']} entries from {logger['total_entries']}, remaining {logger['total_entries'] - logger['filtered_entries']} entries")
     
     
-def preprocess_sft_datasets(use_system_message=False, max_length=256, overwrite=False, split="train"):
+def preprocess_sft_datasets(use_system_message=False, max_length=(128, 512), overwrite=False, split="train"):
     output_dir = "../processed_dataset"
     os.makedirs(output_dir, exist_ok=True)
     
     warm_start_dataset = load_dataset("Asap7772/cog_behav_all_strategies", split=split)
-    warm_start_output_file = os.path.join(output_dir, f"processed_warm_start_dataset_{split}.json")
-    preprocess_warm_start_dataset(warm_start_dataset, warm_start_output_file, use_system_message, max_length, overwrite)
+    warm_start_output_file = os.path.join(output_dir, f"processed_warm_start_dataset_{max_length[0]}_{max_length[1]}_{split}.json")
+    preprocess_warm_start_dataset(warm_start_dataset, warm_start_output_file, max_length, overwrite, use_system_message)
     
     smol_talk_dataset = load_dataset("HuggingFaceTB/smol-smoltalk", split=split)
-    smol_talk_output_file = os.path.join(output_dir, f"processed_smol_talk_dataset_{split}.json")
-    preprocess_smol_talk_dataset(smol_talk_dataset, smol_talk_output_file, use_system_message, max_length, overwrite)
+    smol_talk_output_file = os.path.join(output_dir, f"processed_smol_talk_dataset_{max_length[0]}_{max_length[1]}_{split}.json")
+    preprocess_smol_talk_dataset(smol_talk_dataset, smol_talk_output_file, max_length, overwrite, use_system_message)
     
     
 if __name__ == "__main__":
-    preprocess_sft_datasets(split='test')
+    preprocess_sft_datasets(split='train', overwrite=False)
+    preprocess_sft_datasets(split='test', overwrite=False)
