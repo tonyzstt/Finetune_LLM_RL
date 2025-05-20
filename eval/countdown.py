@@ -1,6 +1,3 @@
-# Rule-Based Reward Function
-# Reference: https://github.com/kanishkg/cognitive-behaviors/blob/main/verl/utils/reward_score/countdown.py#L59
-
 import re
 import random
 import ast
@@ -74,7 +71,6 @@ def compute_score(solution_str, ground_truth, method='strict', format_score=0.1,
     
     equation = extract_solution(solution_str=solution_str)
     do_print = random.randint(1, 64) == 1
-    do_print = False
     
     if do_print:
         print(f"--------------------------------")
@@ -113,3 +109,75 @@ def compute_score(solution_str, ground_truth, method='strict', format_score=0.1,
         if do_print:
             print(f"Error evaluating equation")
         return format_score 
+    
+
+def run_tests(test_cases):
+    passed = 0
+    for i, test in enumerate(test_cases):
+        score = compute_score(
+            solution_str=test["solution_str"],
+            ground_truth=test["ground_truth"],
+            method="strict",
+            format_score=0.1,
+            score=1.0
+        )
+        expected = test["expected_score"]
+        print(f"Test case {i + 1}: {'✔️ Passed' if abs(score - expected) < 1e-5 else '❌ Failed'} | Score: {score} | Expected: {expected}")
+        if abs(score - expected) < 1e-5:
+            passed += 1
+    print(f"\n{passed}/{len(test_cases)} test cases passed.")
+
+if __name__ == "__main__":
+    test_cases = [
+        {
+            "solution_str": "Assistant: Let's compute it. <answer>The answer is (2 + 3) * 4</answer>",
+            "ground_truth": {"target": 20, "numbers": [2, 3, 4]},
+            "expected_score": 1.0
+        },
+        {
+            "solution_str": "Assistant: Here's the answer: <answer>2 + 3 + 5</answer>",
+            "ground_truth": {"target": 10, "numbers": [2, 3, 5]},
+            "expected_score": 1.0
+        },
+        {
+            "solution_str": "Assistant: <answer>3 * 7</answer>",
+            "ground_truth": {"target": 21, "numbers": [3, 7]},
+            "expected_score": 1.0
+        },
+        {
+            "solution_str": "Assistant: <answer>3 * 6</answer>",
+            "ground_truth": {"target": 18, "numbers": [3, 3, 6]},  
+            "expected_score": 1.0
+        },
+        {
+            "solution_str": "Assistant: <answer>3 * 6</answer>",
+            "ground_truth": {"target": 18, "numbers": [3, 6]},  
+            "expected_score": 0.1  
+        },
+        {
+            "solution_str": "Assistant: <answer>2 + 2 + 2</answer>",
+            "ground_truth": {"target": 6, "numbers": [2, 2, 2]},
+            "expected_score": 1.0
+        },
+        {
+            "solution_str": "Assistant: <answer>100 / (5 - 5)</answer>",  
+            "ground_truth": {"target": 0, "numbers": [100, 5, 5]},
+            "expected_score": 0.1
+        },
+        {
+            "solution_str": "Assistant: <answer>2 + 3 + 4 + 5</answer>",
+            "ground_truth": {"target": 14, "numbers": [2, 3, 4]},  
+            "expected_score": 0.1
+        },
+        {
+            "solution_str": "Assistant: <answer>3 * (4 + 2)</answer>",
+            "ground_truth": {"target": 18, "numbers": [2, 3, 4]},
+            "expected_score": 1.0
+        },
+        {
+            "solution_str": "Assistant: <answer>hello world</answer>",  
+            "ground_truth": {"target": 5, "numbers": [1, 2, 2]},
+            "expected_score": 0.1
+        },
+    ]
+    run_tests(test_cases)

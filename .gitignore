@@ -7,10 +7,12 @@ data/output/
 *.pdf
 processed_dataset/**
 ckp/**
+RLAIF/config.py
 
 # ZST
 **/models/**
 **/wandb/**
+**/ckpts/**
 
 # ZFY
 *.pt
