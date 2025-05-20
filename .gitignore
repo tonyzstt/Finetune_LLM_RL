@@ -13,6 +13,7 @@ RLAIF/config.py
 **/models/**
 **/wandb/**
 **/ckpts/**
+**/slurm_outs/**
 
 # ZFY
 *.pt

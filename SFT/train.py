@@ -1,5 +1,5 @@
 import yaml
-
+import argparse
 import torch
 from torch.utils.data import DataLoader
 from transformers import AutoTokenizer, AutoModelForCausalLM, get_cosine_schedule_with_warmup
@@ -19,7 +19,7 @@ def get_grad_norm(model):
     return total_norm
 
 
-def train(model, dataloader, optimizer, device, scheduler, num_epochs):
+def train(model, dataloader, optimizer, device, scheduler, num_epochs, save_dir):
     model.train()
     iter = 0
     
@@ -48,12 +48,19 @@ def train(model, dataloader, optimizer, device, scheduler, num_epochs):
                     tqdm.write(f"epoch: {epoch}, iter: {iter}, loss: {loss.item()}, lr: {scheduler.get_last_lr()[0]}, grad_norm: {grad_norm}")
                     wandb.log({"loss": loss.item(), "lr": scheduler.get_last_lr()[0], "grad_norm": grad_norm})
                     
+                if iter % 800 == 0:
+                    model.save_pretrained(f"/viscam/u/tonyzst/Research/test/SFT/models/{save_dir}_{iter}")
+                    tokenizer.save_pretrained(f"/viscam/u/tonyzst/Research/test/SFT/models/{save_dir}_{iter}")
+                    
                 pbar.set_postfix(loss=loss.item(), lr=scheduler.get_last_lr()[0])
                 
 
 if __name__ == "__main__":
-    
-    with open("sft.yaml", "r") as f:
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--config", type=str, required=True, help="Path to the config file")
+    args = parser.parse_args()
+    with open(args.config, "r") as f:
         config = yaml.safe_load(f)
         
     model_name = config['model_name']
@@ -62,6 +69,7 @@ if __name__ == "__main__":
     batch_size = config['batch_size']
     learning_rate = config['learning_rate']
     max_length = config['max_length']
+    save_dir = config['save_dir']
     
     wandb.init(project="sft", config=config)
     
@@ -85,6 +93,7 @@ if __name__ == "__main__":
         num_training_steps=num_training_steps
     )
     
-    train(model, dataloader, optimizer, device, scheduler, num_epochs)
-    model.save_pretrained("models/sft_model")
-    tokenizer.save_pretrained("models/sft_model")
+    train(model, dataloader, optimizer, device, scheduler, num_epochs, save_dir)
+    model.save_pretrained(f"/viscam/u/tonyzst/Research/test/SFT/models/{save_dir}")
+    tokenizer.save_pretrained(f"/viscam/u/tonyzst/Research/test/SFT/models/{save_dir}")
+    
