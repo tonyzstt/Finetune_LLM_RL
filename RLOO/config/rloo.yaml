@@ -4,3 +4,7 @@ batch_size: 4
 max_length: 512
 learning_rate: 0.0000001
 num_epochs: 1
+bt_model_name: "Qwen/Qwen2.5-0.5B"
+bt_model_weights_path: "bt_model.pt"
+task: "ultrafeedback"
+k: 4
