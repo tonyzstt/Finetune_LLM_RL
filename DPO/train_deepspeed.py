@@ -147,7 +147,9 @@ if __name__ == "__main__":
 
     model, optimizer, _, _ = deepspeed.initialize(
         model=model,
+        model_parameters=model.parameters(),
         config=cfg.deepspeed_config,
+        dist_init_required=False,
     )
 
     optimizer = optimizer.optimizer
