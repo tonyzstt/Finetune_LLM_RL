@@ -5,8 +5,10 @@ import re
 import random
 import ast
 import operator
-
-
+import argparse
+from dataset.countdown import CountdownDataset
+from eval_ultrafeedback import generate_response, get_model
+from tqdm import tqdm
 def extract_solution(solution_str):
     """Extract the equation from the solution string."""
     # Remove everything before the first "Assistant:"
@@ -74,6 +76,7 @@ def compute_score(solution_str, ground_truth, method='strict', format_score=0.1,
     
     equation = extract_solution(solution_str=solution_str)
     do_print = random.randint(1, 64) == 1
+    do_print = False
     
     if do_print:
         print(f"--------------------------------")
@@ -131,56 +134,37 @@ def run_tests(test_cases):
     print(f"\n{passed}/{len(test_cases)} test cases passed.")
 
 if __name__ == "__main__":
-    test_cases = [
-        {
-            "solution_str": "Assistant: Let's compute it. <answer>The answer is (2 + 3) * 4</answer>",
-            "ground_truth": {"target": 20, "numbers": [2, 3, 4]},
-            "expected_score": 1.0
-        },
-        {
-            "solution_str": "Assistant: Here's the answer: <answer>2 + 3 + 5</answer>",
-            "ground_truth": {"target": 10, "numbers": [2, 3, 5]},
-            "expected_score": 1.0
-        },
-        {
-            "solution_str": "Assistant: <answer>3 * 7</answer>",
-            "ground_truth": {"target": 21, "numbers": [3, 7]},
-            "expected_score": 1.0
-        },
-        {
-            "solution_str": "Assistant: <answer>3 * 6</answer>",
-            "ground_truth": {"target": 18, "numbers": [3, 3, 6]},  
-            "expected_score": 1.0
-        },
-        {
-            "solution_str": "Assistant: <answer>3 * 6</answer>",
-            "ground_truth": {"target": 18, "numbers": [3, 6]},  
-            "expected_score": 0.1  
-        },
-        {
-            "solution_str": "Assistant: <answer>2 + 2 + 2</answer>",
-            "ground_truth": {"target": 6, "numbers": [2, 2, 2]},
-            "expected_score": 1.0
-        },
-        {
-            "solution_str": "Assistant: <answer>100 / (5 - 5)</answer>",  
-            "ground_truth": {"target": 0, "numbers": [100, 5, 5]},
-            "expected_score": 0.1
-        },
-        {
-            "solution_str": "Assistant: <answer>2 + 3 + 4 + 5</answer>",
-            "ground_truth": {"target": 14, "numbers": [2, 3, 4]},  
-            "expected_score": 0.1
-        },
-        {
-            "solution_str": "Assistant: <answer>3 * (4 + 2)</answer>",
-            "ground_truth": {"target": 18, "numbers": [2, 3, 4]},
-            "expected_score": 1.0
-        },
-        {
-            "solution_str": "Assistant: <answer>hello world</answer>",  
-            "ground_truth": {"target": 5, "numbers": [1, 2, 2]},
-            "expected_score": 0.1
-        },
-    ]
-    run_tests(test_cases)
+
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--model_path", type=str, required=True)
+    parser.add_argument("--dataset_path", type=str, required=True)
+    args = parser.parse_args()
+
+    dataset = CountdownDataset(args.dataset_path)
+    llm = get_model(args.model_path)
+    scores = []
+
+    for item in tqdm(dataset):
+
+        prompt = item["prompt"]
+        target = item["target"]
+        numbers = item["numbers"]
+        
+        response = generate_response(llm, prompt)
+        score = compute_score(
+            solution_str=response,
+            ground_truth={"target": target, "numbers": numbers},
+            method="strict",
+            format_score=0.1,
+            score=1.0
+        )
+        scores.append(score)
+
+    print(f"Average score: {sum(scores) / len(scores)}")
+
+
+    
+
+
+    

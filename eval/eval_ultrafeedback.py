@@ -57,7 +57,6 @@ def get_reward(client, prompt, response):
 
 if __name__ == "__main__":
 
-    # take args called model_path 
     parser = argparse.ArgumentParser()
     parser.add_argument("--model_path", type=str, required=True)
     parser.add_argument("--dataset_path", type=str, required=True)
