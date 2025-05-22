@@ -98,8 +98,8 @@ if __name__ == "__main__":
     dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
     
     optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate)
-    num_training_steps = len(dataloader) * num_epochs
-    num_warmup_steps = int(num_training_steps * 0.1)
+    num_training_steps = len(dataloader) * num_epochs // cfg['gradient_accumulation_steps']
+    num_warmup_steps = int(num_training_steps * 0.1) // cfg['gradient_accumulation_steps']
     
     scheduler = get_cosine_schedule_with_warmup(
         optimizer,

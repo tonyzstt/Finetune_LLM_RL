@@ -78,28 +78,25 @@ def train(model, ref_model, dataloader, device, cfg, scheduler, optimizer, token
                 loss.backward()
 
                 if (iter_idx + 1) % grad_accum_steps == 0:
+                    print("stepping")
                     optimizer.step()
                     scheduler.step()
                     optimizer.zero_grad()
 
-                running_loss += loss.item()
-                
                 if (iter_idx + 1) % cfg.log_steps == 0:
-                    avg_loss = running_loss / cfg.log_steps
                     grad_norm = get_grad_norm(model)
 
                     tqdm.write(
                         f"epoch {epoch}, step {iter_idx}, "
-                        f"avg_loss({cfg.log_steps}) {avg_loss:.4f}, "
+                        f"loss {loss * grad_accum_steps:.4f}, "
                         f"lr {scheduler.get_last_lr()[0]:.2e}, "
                         f"grad_norm {grad_norm:.2f}"
                     )
                     wandb.log({
-                        "avg_loss": avg_loss,
+                        "loss": loss * grad_accum_steps,
                         "lr": scheduler.get_last_lr()[0],
                         "grad_norm": grad_norm
                     })
-                    running_loss = 0.0  
 
                 if (iter_idx + 1) % cfg.save_steps == 0:
                     model.save_pretrained(f"/viscam/u/tonyzst/Research/test/DPO/ckpts/step_{iter_idx}")
@@ -109,8 +106,7 @@ def train(model, ref_model, dataloader, device, cfg, scheduler, optimizer, token
                 pbar.update(1)
 
         if iter_idx % cfg.log_steps:
-            avg_loss = running_loss / (iter_idx % cfg.log_steps)
-            wandb.log({"avg_loss_tail": avg_loss})
+            wandb.log({"avg_loss_tail": loss * grad_accum_steps})
 
 if __name__ == "__main__":
     raw_cfg = OmegaConf.load("config/dpo.yaml")
@@ -130,8 +126,8 @@ if __name__ == "__main__":
     dataloader = DataLoader(dataset, batch_size=cfg.batch_size, shuffle=True)
 
     optimizer = torch.optim.AdamW(model.parameters(), lr=cfg.learning_rate)
-    num_training_steps = len(dataloader) * cfg.num_epochs
-    num_warmup_steps = int(0.1 * num_training_steps)
+    num_training_steps = len(dataloader) * cfg.num_epochs // cfg.gradient_accumulation_steps
+    num_warmup_steps = int(0.1 * num_training_steps) // cfg.gradient_accumulation_steps
 
     scheduler = get_cosine_schedule_with_warmup(
         optimizer,
@@ -141,5 +137,5 @@ if __name__ == "__main__":
 
     train(model, ref_model, dataloader, device, cfg, scheduler, optimizer, tokenizer)
 
-    model.save_pretrained("/viscam/u/tonyzst/Research/test/DPO/ckpts/last")
-    tokenizer.save_pretrained("/viscam/u/tonyzst/Research/test/DPO/ckpts/last")
+    model.save_pretrained("/viscam/u/tonyzst/Research/test/DPO/ckpts/dpo_last")
+    tokenizer.save_pretrained("/viscam/u/tonyzst/Research/test/DPO/ckpts/dpo_last")
