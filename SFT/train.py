@@ -84,6 +84,7 @@ if __name__ == "__main__":
     learning_rate = config['learning_rate']
     max_length = config['max_length']
     save_dir = config['save_dir']
+    num_warmup_steps = config['warm_up_steps']
     
     wandb.init(project="sft", config=config)
     

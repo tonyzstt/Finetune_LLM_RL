@@ -7,15 +7,33 @@ import wandb
 from tqdm import tqdm
 import json
 
-from bt_model import BTModel
+from reward_model import RewardModel
 from rloo_dataset import RLOODataset
 
 
-def train(model, dataloader, optimizer, device, scheduler, num_epochs):
+def get_grad_norm(model):
+    total_norm = 0.0
+    for p in model.parameters():
+        if p.grad is not None:
+            param_norm = p.grad.data.norm(2) 
+            total_norm += param_norm.item() ** 2
+    total_norm = total_norm ** 0.5
+    return total_norm
+
+
+def train(model, dataloader, optimizer, device, scheduler, cfg):
+    
+    num_epochs = cfg['num_epochs']
+    grad_accum_steps = cfg['gradient_accumulation_steps']
+    log_steps = cfg['log_steps']
+    save_steps = cfg['save_steps']
+
     model.train()
     iter = 0
-
+    running_loss = 0.0
+    optimizer.zero_grad()
     total_steps = num_epochs * len(dataloader)
+    
     with tqdm(total=total_steps) as pbar:
         for epoch in range(num_epochs):
             for batch in dataloader:
@@ -30,24 +48,35 @@ def train(model, dataloader, optimizer, device, scheduler, num_epochs):
 
                 loss = model.loss(chosen_reward, rejected_reward)
 
-                optimizer.zero_grad()
+                loss = loss / grad_accum_steps
                 loss.backward()
-                optimizer.step()
-                scheduler.step()
 
                 iter += 1
                 pbar.update(1)
                 
-                if iter % 10 == 0:
-                    tqdm.write(f"epoch: {epoch}, iter: {iter}, loss: {loss.item()}, lr: {scheduler.get_last_lr()[0]}")
-                    wandb.log({"loss": loss.item(), "lr": scheduler.get_last_lr()[0]})
+                if iter % grad_accum_steps == 0:
+                    optimizer.step()
+                    scheduler.step()
+                    optimizer.zero_grad()
                     
-                pbar.set_postfix(loss=loss.item(), lr=scheduler.get_last_lr()[0])
+                running_loss += loss.item()
+
+                if iter % log_steps == 0:
+                    avg_loss = running_loss / log_steps
+                    grad_norm = get_grad_norm(model)
+                    tqdm.write(f"epoch: {epoch}, iter: {iter}, avg_loss: {avg_loss}, lr: {scheduler.get_last_lr()[0]}, grad_norm: {grad_norm}")
+                    wandb.log({"avg_loss": avg_loss, "lr": scheduler.get_last_lr()[0], "grad_norm": grad_norm})
+                    
+                    pbar.set_postfix(avg_loss=avg_loss, lr=scheduler.get_last_lr()[0])
+                    running_loss = 0.0
+                    
+                if iter % save_steps == 0:
+                    torch.save(model.state_dict(), f"reward_model_{iter}.pt")
 
 
 if __name__ == "__main__":
 
-    with open("config/bt.yaml", "r") as f:
+    with open("config/reward.yaml", "r") as f:
         config = yaml.safe_load(f)
         
     model_name = config['model_name']
@@ -58,7 +87,7 @@ if __name__ == "__main__":
     max_length = config['max_length']
     task = config['task']
 
-    wandb.init(project="bt", config=config)
+    wandb.init(project="reward", config=config)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print("Using device:", device)
@@ -66,11 +95,11 @@ if __name__ == "__main__":
     tokenizer = AutoTokenizer.from_pretrained(model_name)
     tokenizer.pad_token = tokenizer.eos_token
     base_model = AutoModelForCausalLM.from_pretrained(model_name).to(device)
-    model = BTModel(base_model).to(device)
+    model = RewardModel(base_model).to(device)
 
     data = json.load(open(data_path, "r"))
     dataset = RLOODataset(data=data, tokenizer=tokenizer, task=task, max_length=max_length)
-    dataloader = DataLoader(dataset, shuffle=True)
+    dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
 
     optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate)
     num_training_steps = len(dataloader) * num_epochs
@@ -82,5 +111,5 @@ if __name__ == "__main__":
         num_training_steps=num_training_steps,
     )
 
-    train(model, dataloader, optimizer, device, scheduler, num_epochs)
-    torch.save(model.state_dict(), "bt_model.pt")
+    train(model, dataloader, optimizer, device, scheduler, config)
+    torch.save(model.state_dict(), "reward_model.pt")
