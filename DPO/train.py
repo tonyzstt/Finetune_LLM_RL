@@ -43,6 +43,8 @@ def train(model, ref_model, dataloader, device, cfg, scheduler, optimizer, token
     
     running_loss = 0.0           
     iter_idx = 0
+    grad_accum_steps = cfg.gradient_accumulation_steps
+    optimizer.zero_grad()
 
     total_steps = cfg.num_epochs * len(dataloader)
     with tqdm(total=total_steps) as pbar:
@@ -61,6 +63,7 @@ def train(model, ref_model, dataloader, device, cfg, scheduler, optimizer, token
                 chosen_lp   = get_log_prob(chosen_logits,   chosen_ids,   prompt_len)
                 rejected_lp = get_log_prob(rejected_logits, rejected_ids, prompt_len)
 
+
                 with torch.no_grad():
                     chosen_lp_ref   = get_log_prob(
                         ref_model(chosen_ids,   attention_mask=chosen_mask).logits,
@@ -70,13 +73,17 @@ def train(model, ref_model, dataloader, device, cfg, scheduler, optimizer, token
                         rejected_ids, prompt_len)
 
                 loss = loss_dpo(chosen_lp, rejected_lp, chosen_lp_ref, rejected_lp_ref, cfg.beta)
-
-                optimizer.zero_grad()
+                
+                loss = loss / grad_accum_steps
                 loss.backward()
-                optimizer.step()
-                scheduler.step()
+
+                if (iter_idx + 1) % grad_accum_steps == 0:
+                    optimizer.step()
+                    scheduler.step()
+                    optimizer.zero_grad()
 
                 running_loss += loss.item()
+                
                 if (iter_idx + 1) % cfg.log_steps == 0:
                     avg_loss = running_loss / cfg.log_steps
                     grad_norm = get_grad_norm(model)

@@ -45,3 +45,4 @@ class DPOConfig:
     log_steps: int
     deepspeed_config: str
     save_steps: int
+    gradient_accumulation_steps: int
