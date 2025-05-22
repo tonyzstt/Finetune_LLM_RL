@@ -27,8 +27,7 @@ def get_grad_norm(model):
 def get_log_prob(logits, labels, prompt_lengths):
     log_probs = F.log_softmax(logits, dim=-1)
     token_log_probs = torch.gather(log_probs, -1, labels.unsqueeze(-1)).squeeze(-1)
-    
-    # mask out the prompt tokens
+
     _, seq_len = labels.shape
     response_mask = torch.arange(seq_len, device=labels.device).unsqueeze(0) >= prompt_lengths.unsqueeze(1)
     response_mask = response_mask.float()
@@ -39,15 +38,14 @@ def get_log_prob(logits, labels, prompt_lengths):
 
 
 def rloo_loss(response_lp_list, response_reward_list, k, device):
-    # assert len(response_lp_list) == len(response_reward_list) == k
-    response_lp = torch.stack(response_lp_list).to(device).squeeze(1)
-    response_reward = torch.tensor(response_reward_list).to(device)
+    response_lp = torch.stack(response_lp_list).to(device)
+    response_reward = torch.stack(response_reward_list).to(device)
+    # assert response_lp.shape == response_reward.shape
 
     total_reward = response_reward.sum().unsqueeze(0)
     reward_LOO = 1/(k-1) * (total_reward - response_reward)
     diff_reward = response_reward - reward_LOO
 
-    # assert diff_reward.shape == response_lp.shape
     RLOOloss = -(diff_reward * response_lp).mean()
     
     return RLOOloss
@@ -79,19 +77,18 @@ def train(model, reward_model, tokenizer, dataloader, optimizer, device, schedul
                 response_lp_list = []
                 response_reward_list = []
                 for _ in range(k):
-                    response = model.generate(input_ids_prompt, attention_mask=attention_mask_prompt, max_new_tokens=max_length, do_sample=True, pad_token_id=tokenizer.eos_token_id)
-                    response_text = tokenizer.decode(response[0], skip_special_tokens=True)
+                    response_ids = model.generate(input_ids_prompt, attention_mask=attention_mask_prompt, max_new_tokens=max_length, do_sample=True, pad_token_id=tokenizer.eos_token_id)
+                    # response_text = tokenizer.decode(response_ids[0], skip_special_tokens=True)
                     # print("response_text:", response_text)
-
-                    enc_response = tokenizer(response_text, padding="max_length", truncation=True, max_length=max_length, return_tensors="pt")
-                    response_ids = enc_response["input_ids"].to(device)
-                    response_mask = enc_response["attention_mask"].to(device)
+                    response_mask = (response_ids != tokenizer.pad_token_id).to(device)
                     response_logits = model(response_ids, attention_mask=response_mask).logits
                     response_lp = get_log_prob(response_logits, response_ids, prompt_len)
                     response_lp_list.append(response_lp)
 
                     # get the reward from the reward model
-                    response_reward = reward_model(response_ids, attention_mask=response_mask)
+                    with torch.no_grad():
+                        response_reward = reward_model(response_ids, attention_mask=response_mask)
+                    
                     response_reward_list.append(response_reward)
 
                 loss = rloo_loss(response_lp_list, response_reward_list, k, device)
@@ -146,6 +143,7 @@ if __name__ == "__main__":
 
     tokenizer = AutoTokenizer.from_pretrained(model_name)
     tokenizer.pad_token = tokenizer.eos_token
+    tokenizer.padding_side = "left"
     model = AutoModelForCausalLM.from_pretrained(model_name).to(device)
 
     data = json.load(open(data_path, "r"))
