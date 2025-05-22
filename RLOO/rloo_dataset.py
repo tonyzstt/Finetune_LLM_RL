@@ -14,11 +14,19 @@ class RLOODataset(Dataset):
 
     def __getitem__(self, idx):
         example = self.data[idx]
-        prompt = f"<|im_start|>user\n{example['input']}<|im_end|>\n<|im_start|>assistant\n"
+        prompt = example['input']
         enc_prompt = self.tokenizer(prompt, padding="max_length", truncation=True, max_length=self.max_length, return_tensors="pt")
 
-        if self.task == "ultrafeedback" or self.task == "countdown":
+        if self.task == "ultrafeedback":
             return {
+                "input_ids_prompt": enc_prompt["input_ids"].squeeze(0),
+                "attention_mask_prompt": enc_prompt["attention_mask"].squeeze(0),
+            }
+
+        elif self.task == "countdown":
+            return {
+                "ground_truth": example["ground_truth"],
+                "prompt": prompt,
                 "input_ids_prompt": enc_prompt["input_ids"].squeeze(0),
                 "attention_mask_prompt": enc_prompt["attention_mask"].squeeze(0),
             }
