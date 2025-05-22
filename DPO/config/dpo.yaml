@@ -4,7 +4,7 @@ batch_size: 2
 max_length: 1280
 learning_rate: 0.00002
 num_epochs: 1
-beta: 0.5
+beta: 0.1
 log_steps: 100
 save_steps: 14000
 gradient_accumulation_steps: 8
