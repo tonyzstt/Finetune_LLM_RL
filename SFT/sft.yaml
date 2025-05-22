@@ -1,9 +1,9 @@
-model_name: "Qwen/Qwen2.5-0.5B"
-data_path_list: ["../processed_dataset/processed_smol_talk_dataset_128_512_train.json", "../processed_dataset/processed_warm_start_dataset_128_512_train.json"]
+model_name: "/viscam/u/tonyzst/Research/test/SFT/models/base_model"
+data_path_list: ["/viscam/u/tonyzst/Research/test/processed_dataset/processed_smol_talk_dataset_128_512_train.json"]
 batch_size: 4
 max_length: 1024
-learning_rate: 0.001
-num_epochs: 3
+learning_rate: 0.00002
+num_epochs: 1
 gradient_accumulation_steps: 8
 log_steps: 100
 save_steps: 10000
