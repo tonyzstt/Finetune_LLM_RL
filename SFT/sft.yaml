@@ -1,6 +1,10 @@
 model_name: "Qwen/Qwen2.5-0.5B"
-data_path_list: ["../processed_dataset/processed_smol_talk_dataset.json", "../processed_dataset/processed_warm_start_dataset.json"]
+data_path_list: ["../processed_dataset/processed_smol_talk_dataset_128_512_train.json", "../processed_dataset/processed_warm_start_dataset_128_512_train.json"]
 batch_size: 1
 max_length: 1024
 learning_rate: 0.001
 num_epochs: 3
+gradient_accumulation_steps: 16
+log_steps: 100
+save_steps: 10000
+save_dir: "/home/ubuntu/CS224R-Project/ckp/qwen_sft"
