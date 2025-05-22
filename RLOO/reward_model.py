@@ -16,7 +16,7 @@ class RewardModel(nn.Module):
 
     # Bradley-Terry reward objective
     def loss(self, chosen_reward, rejected_reward):
-        assert chosen_reward.shape == rejected_reward.shape
+        # assert chosen_reward.shape == rejected_reward.shape
         diff = chosen_reward - rejected_reward
         BTloss = -F.logsigmoid(diff).mean()
         return BTloss

@@ -32,8 +32,8 @@ def train(model, dataloader, optimizer, device, scheduler, cfg):
     iter = 0
     running_loss = 0.0
     optimizer.zero_grad()
-
     total_steps = num_epochs * len(dataloader)
+    
     with tqdm(total=total_steps) as pbar:
         for epoch in range(num_epochs):
             for batch in dataloader:
@@ -99,7 +99,7 @@ if __name__ == "__main__":
 
     data = json.load(open(data_path, "r"))
     dataset = RLOODataset(data=data, tokenizer=tokenizer, task=task, max_length=max_length)
-    dataloader = DataLoader(dataset, shuffle=True)
+    dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
 
     optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate)
     num_training_steps = len(dataloader) * num_epochs

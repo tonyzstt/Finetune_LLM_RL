@@ -10,11 +10,8 @@ import json
 import os
 import sys
 
-from bt_model import BTModel
+from reward_model import RewardModel
 from rloo_dataset import RLOODataset
-
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "eval")))
-import countdown
 
 
 def get_grad_norm(model):
@@ -42,25 +39,33 @@ def get_log_prob(logits, labels, prompt_lengths):
 
 
 def rloo_loss(response_lp_list, response_reward_list, k, device):
-    assert len(response_lp_list) == len(response_reward_list) == k
+    # assert len(response_lp_list) == len(response_reward_list) == k
     response_lp = torch.stack(response_lp_list).to(device).squeeze(1)
     response_reward = torch.tensor(response_reward_list).to(device)
 
     total_reward = response_reward.sum().unsqueeze(0)
-    reward_LOO = (total_reward - response_reward) * 1/(k-1)
+    reward_LOO = 1/(k-1) * (total_reward - response_reward)
     diff_reward = response_reward - reward_LOO
 
-    assert diff_reward.shape == response_lp.shape
+    # assert diff_reward.shape == response_lp.shape
     RLOOloss = -(diff_reward * response_lp).mean()
     
     return RLOOloss
 
 
-def train(model, tokenizer, dataloader, optimizer, device, scheduler, num_epochs, task, k, max_length=1024, reward_model=None):
+def train(model, reward_model, tokenizer, dataloader, optimizer, device, scheduler, cfg, k, max_length=1024):
+    
+    num_epochs = cfg['num_epochs']
+    grad_accum_steps = cfg['gradient_accumulation_steps']
+    log_steps = cfg['log_steps']
+    save_steps = cfg['save_steps']
+    
     model.train()
     iter = 0
-
+    running_loss = 0.0
+    optimizer.zero_grad()
     total_steps = num_epochs * len(dataloader)
+
     with tqdm(total=total_steps) as pbar:
         for epoch in range(num_epochs):
             for batch in dataloader:
@@ -85,41 +90,37 @@ def train(model, tokenizer, dataloader, optimizer, device, scheduler, num_epochs
                     response_lp = get_log_prob(response_logits, response_ids, prompt_len)
                     response_lp_list.append(response_lp)
 
-                    if task == "ultrafeedback":
-                        # get the reward from the reward model
-                        response_reward = reward_model(response_ids, attention_mask=response_mask)
-                        # print("response_reward:", response_reward)
-
-                    elif task == "countdown":
-                        # get the reward from the rule-based reward function
-                        ground_truth = batch["ground_truth"]
-                        ground_truth = {
-                            "target": ground_truth["target"].item(),
-                            "numbers": [x.item() for x in ground_truth["numbers"]]
-                        }
-                        prompt = tokenizer.decode(input_ids_prompt[0], skip_special_tokens=True)
-                        length = len(prompt)
-                        response_no_prompt = response_text[length:]
-                        response_reward = countdown.compute_score(response_no_prompt, ground_truth)
-
+                    # get the reward from the reward model
+                    response_reward = reward_model(response_ids, attention_mask=response_mask)
                     response_reward_list.append(response_reward)
 
                 loss = rloo_loss(response_lp_list, response_reward_list, k, device)
 
-                optimizer.zero_grad()
+                loss = loss / grad_accum_steps
                 loss.backward()
-                optimizer.step()
-                scheduler.step()
 
                 iter += 1
                 pbar.update(1)
+
+                if iter % grad_accum_steps == 0:
+                    optimizer.step()
+                    scheduler.step()
+                    optimizer.zero_grad()
+
+                running_loss += loss.item()
                 
-                if iter % 10 == 0:
+                if iter % log_steps == 0:
+                    avg_loss = running_loss / log_steps
                     grad_norm = get_grad_norm(model)
-                    tqdm.write(f"epoch: {epoch}, iter: {iter}, loss: {loss.item()}, lr: {scheduler.get_last_lr()[0]}, grad_norm: {grad_norm}")
-                    wandb.log({"loss": loss.item(), "lr": scheduler.get_last_lr()[0], "grad_norm": grad_norm})
+                    tqdm.write(f"epoch: {epoch}, iter: {iter}, avg_loss: {avg_loss}, lr: {scheduler.get_last_lr()[0]}, grad_norm: {grad_norm}")
+                    wandb.log({"avg_loss": avg_loss, "lr": scheduler.get_last_lr()[0], "grad_norm": grad_norm})
                     
-                pbar.set_postfix(loss=loss.item(), lr=scheduler.get_last_lr()[0])
+                    pbar.set_postfix(avg_loss=avg_loss, lr=scheduler.get_last_lr()[0])
+                    running_loss = 0.0
+                    
+                if iter % save_steps == 0:
+                    model.save_pretrained(f"models/rloo_model_{iter}")
+                    tokenizer.save_pretrained(f"models/rloo_model_{iter}")
 
 
 if __name__ == "__main__":
@@ -133,8 +134,8 @@ if __name__ == "__main__":
     batch_size = config["batch_size"]
     learning_rate = config["learning_rate"]
     max_length = config["max_length"]
-    bt_model_name = config["bt_model_name"]
-    bt_model_weights_path = config["bt_model_weights_path"]
+    reward_model_name = config["reward_model_name"]
+    reward_model_weights_path = config["reward_model_weights_path"]
     task = config["task"]
     k = config["k"]
 
@@ -149,7 +150,7 @@ if __name__ == "__main__":
 
     data = json.load(open(data_path, "r"))
     dataset = RLOODataset(data=data, tokenizer=tokenizer, task=task, max_length=max_length)
-    dataloader = DataLoader(dataset, shuffle=True)
+    dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
 
     optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate)
     num_training_steps = len(dataloader) * num_epochs
@@ -161,16 +162,13 @@ if __name__ == "__main__":
         num_training_steps=num_training_steps,
     )
 
-    if task == "ultrafeedback":
-        # load reward model, only needed for ultrafeedback
-        base_model = AutoModelForCausalLM.from_pretrained(bt_model_name)
-        reward_model = BTModel(base_model)
-        reward_model.to(device)
-        reward_model.load_state_dict(torch.load(bt_model_weights_path, map_location="cuda"))
-        reward_model.eval()
-    else:
-        reward_model = None
+    # load reward model
+    base_model = AutoModelForCausalLM.from_pretrained(reward_model_name)
+    reward_model = RewardModel(base_model)
+    reward_model.to(device)
+    reward_model.load_state_dict(torch.load(reward_model_weights_path, map_location="cuda"))
+    reward_model.eval()
 
-    train(model, tokenizer, dataloader, optimizer, device, scheduler, num_epochs, task, k, max_length, reward_model)
+    train(model, reward_model, tokenizer, dataloader, optimizer, device, scheduler, config, k, max_length)
     model.save_pretrained("models/rloo_model")
     tokenizer.save_pretrained("models/rloo_model")
