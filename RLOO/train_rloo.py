@@ -13,6 +13,9 @@ import sys
 from reward_model import RewardModel
 from rloo_dataset import RLOODataset
 
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "eval")))
+import eval_countdown
+
 
 def get_grad_norm(model):
     total_norm = 0.0
@@ -40,7 +43,7 @@ def get_log_prob(logits, labels, prompt_lengths):
 def rloo_loss(response_lp_list, response_reward_list, k, device):
     response_lp = torch.stack(response_lp_list).to(device)
     response_reward = torch.stack(response_reward_list).to(device)
-    # assert response_lp.shape == response_reward.shape
+    assert response_lp.shape == response_reward.shape
 
     total_reward = response_reward.sum().unsqueeze(0)
     reward_LOO = 1/(k-1) * (total_reward - response_reward)
@@ -51,12 +54,33 @@ def rloo_loss(response_lp_list, response_reward_list, k, device):
     return RLOOloss
 
 
-def train(model, reward_model, tokenizer, dataloader, optimizer, device, scheduler, cfg, k, max_length=1024):
+def process_ground_truth(ground_truth):
+    target = ground_truth["target"]
+    numbers = ground_truth["numbers"]
+    n = len(ground_truth["target"])
+    numbers_list_incorrect = [l.tolist() for l in numbers]
+    numbers_list_correct = list(zip(*numbers_list_incorrect))
+    group_truth_list = []
+    for i in range(n):
+        truth = dict()
+        truth["target"] = target[i]
+        truth["numbers"] = numbers_list_correct[i]
+        group_truth_list.append(truth)
+    return group_truth_list
+
+
+def train(model, tokenizer, dataloader, optimizer, device, scheduler, cfg, max_length=1024, reward_model=None):
     
     num_epochs = cfg['num_epochs']
     grad_accum_steps = cfg['gradient_accumulation_steps']
     log_steps = cfg['log_steps']
     save_steps = cfg['save_steps']
+    k = cfg["k"]
+    eval_method = config["eval_method"]
+
+    if reward_model:
+        reward_model.eval()
+        reward_model.requires_grad_(False)
     
     model.train()
     iter = 0
@@ -78,16 +102,41 @@ def train(model, reward_model, tokenizer, dataloader, optimizer, device, schedul
                 response_reward_list = []
                 for _ in range(k):
                     response_ids = model.generate(input_ids_prompt, attention_mask=attention_mask_prompt, max_new_tokens=max_length, do_sample=True, pad_token_id=tokenizer.eos_token_id)
-                    # response_text = tokenizer.decode(response_ids[0], skip_special_tokens=True)
-                    # print("response_text:", response_text)
+                    # response_text = tokenizer.batch_decode(response_ids, skip_special_tokens=True)
+                    # for i, text in enumerate(response_text):
+                    #     print(f"Response {i}:", text)
                     response_mask = (response_ids != tokenizer.pad_token_id).to(device)
                     response_logits = model(response_ids, attention_mask=response_mask).logits
                     response_lp = get_log_prob(response_logits, response_ids, prompt_len)
                     response_lp_list.append(response_lp)
 
-                    # get the reward from the reward model
-                    with torch.no_grad():
-                        response_reward = reward_model(response_ids, attention_mask=response_mask)
+                    if eval_method == "reward_model":
+                        # get the reward from the reward model
+                        with torch.no_grad():
+                            response_reward = reward_model(response_ids, attention_mask=response_mask)
+                            # print("response_reward:", response_reward)
+                    
+                    elif eval_method == "reward_function":
+                        # get the reward from the reward function
+                        batch_size = response_ids.shape[0]
+                        response_reward = []
+                        ground_truth_list = process_ground_truth(batch["ground_truth"])
+                        # print("ground_truth_list:", ground_truth_list)
+
+                        for i in range(batch_size):
+                            ground_truth = ground_truth_list[i]
+                            prompt_text = tokenizer.decode(input_ids_prompt[i], skip_special_tokens=True)
+                            response_text = tokenizer.decode(response_ids[i], skip_special_tokens=True)
+                            length = len(prompt_text)
+                            response_no_prompt = response_text[length:]
+                            # print("response_text:", response_text)
+                            # print("prompt_text:", prompt_text)
+                            # print("response_no_prompt:", response_no_prompt)
+                            reward = eval_countdown.compute_score(response_no_prompt, ground_truth)
+                            response_reward.append(reward)
+
+                        response_reward = torch.tensor(response_reward, dtype=torch.float32, device=device)
+                        # print("response_reward:", response_reward)
                     
                     response_reward_list.append(response_reward)
 
@@ -134,7 +183,7 @@ if __name__ == "__main__":
     reward_model_name = config["reward_model_name"]
     reward_model_weights_path = config["reward_model_weights_path"]
     task = config["task"]
-    k = config["k"]
+    eval_method = config["eval_method"]
 
     wandb.init(project="rloo", config=config)
 
@@ -160,13 +209,15 @@ if __name__ == "__main__":
         num_training_steps=num_training_steps,
     )
 
-    # load reward model
-    base_model = AutoModelForCausalLM.from_pretrained(reward_model_name)
-    reward_model = RewardModel(base_model)
-    reward_model.to(device)
-    reward_model.load_state_dict(torch.load(reward_model_weights_path, map_location="cuda"))
-    reward_model.eval()
+    if eval_method == "reward_model":
+        # load reward model
+        base_model = AutoModelForCausalLM.from_pretrained(reward_model_name)
+        reward_model = RewardModel(base_model)
+        reward_model.to(device)
+        reward_model.load_state_dict(torch.load(reward_model_weights_path, map_location="cuda"))
+    else:
+        reward_model = None
 
-    train(model, reward_model, tokenizer, dataloader, optimizer, device, scheduler, config, k, max_length)
+    train(model, tokenizer, dataloader, optimizer, device, scheduler, config, max_length, reward_model)
     model.save_pretrained("models/rloo_model")
     tokenizer.save_pretrained("models/rloo_model")
