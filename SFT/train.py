@@ -19,10 +19,17 @@ def get_grad_norm(model):
     return total_norm
 
 
-def train(model, dataloader, optimizer, device, scheduler, num_epochs, save_dir):
+def train(model, dataloader, optimizer, device, scheduler, cfg, save_dir):
+    
+    num_epochs = cfg['num_epochs']
+    grad_accum_steps = cfg['gradient_accumulation_steps']
+    log_steps = cfg['log_steps']
+    save_steps = cfg['save_steps']
+    
     model.train()
     iter = 0
-    
+    running_loss = 0.0
+    optimizer.zero_grad()
     total_steps = num_epochs * len(dataloader)
     with tqdm(total=total_steps) as pbar:
         for epoch in range(num_epochs):
@@ -35,24 +42,31 @@ def train(model, dataloader, optimizer, device, scheduler, num_epochs, save_dir)
                 outputs = model(input_ids=input_ids, attention_mask=attention_mask, labels=labels)
                 loss = outputs.loss
 
-                optimizer.zero_grad()
+                loss = loss / grad_accum_steps
                 loss.backward()
-                optimizer.step()
-                scheduler.step()
 
                 iter += 1
                 pbar.update(1)
                 
-                if iter % 100 == 0:
-                    grad_norm = get_grad_norm(model)
-                    tqdm.write(f"epoch: {epoch}, iter: {iter}, loss: {loss.item()}, lr: {scheduler.get_last_lr()[0]}, grad_norm: {grad_norm}")
-                    wandb.log({"loss": loss.item(), "lr": scheduler.get_last_lr()[0], "grad_norm": grad_norm})
+                if iter % grad_accum_steps == 0:
+                    optimizer.step()
+                    scheduler.step()
+                    optimizer.zero_grad()
                     
-                if iter % 800 == 0:
+                running_loss += loss.item()
+                
+                if iter % log_steps == 0:
+                    avg_loss = running_loss / log_steps
+                    grad_norm = get_grad_norm(model)
+                    tqdm.write(f"epoch: {epoch}, iter: {iter}, avg_loss: {avg_loss}, lr: {scheduler.get_last_lr()[0]}, grad_norm: {grad_norm}")
+                    wandb.log({"avg_loss": avg_loss, "lr": scheduler.get_last_lr()[0], "grad_norm": grad_norm})
+                    
+                    pbar.set_postfix(avg_loss=avg_loss, lr=scheduler.get_last_lr()[0])
+                    running_loss = 0.0
+                    
+                if iter % save_steps == 0:
                     model.save_pretrained(f"/viscam/u/tonyzst/Research/test/SFT/models/{save_dir}_{iter}")
                     tokenizer.save_pretrained(f"/viscam/u/tonyzst/Research/test/SFT/models/{save_dir}_{iter}")
-                    
-                pbar.set_postfix(loss=loss.item(), lr=scheduler.get_last_lr()[0])
                 
 
 if __name__ == "__main__":
@@ -93,7 +107,7 @@ if __name__ == "__main__":
         num_training_steps=num_training_steps
     )
     
-    train(model, dataloader, optimizer, device, scheduler, num_epochs, save_dir)
+    train(model, dataloader, optimizer, device, scheduler, config, save_dir)
     model.save_pretrained(f"/viscam/u/tonyzst/Research/test/SFT/models/{save_dir}")
     tokenizer.save_pretrained(f"/viscam/u/tonyzst/Research/test/SFT/models/{save_dir}")
     
