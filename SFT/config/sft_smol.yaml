@@ -1,0 +1,10 @@
+model_name: "/viscam/u/tonyzst/Research/test/SFT/models/base_model"
+data_path_list: ["/viscam/u/tonyzst/Research/test/processed_dataset/processed_smol_talk_dataset_128_512_train.json"]
+batch_size: 5
+max_length: 1280
+learning_rate: 0.00002
+num_epochs: 1
+log_steps: 10
+save_steps: 10000
+gradient_accumulation_steps: 8
+save_dir: "sft_smol"
