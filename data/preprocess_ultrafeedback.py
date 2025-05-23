@@ -20,12 +20,14 @@ def preprocess_ultrafeedback_dataset(dataset, output_file):
         prompt = item["prompt"]
         chosen = item["chosen"][1]['content']
         rejected = item["rejected"][1]['content']
+        chosen_score = item["score_chosen"]
+        rejected_score = item["score_rejected"]
 
         prompt_length = len(prompt.split(" "))
         chosen_length = len(chosen.split(" "))
         rejected_length = len(rejected.split(" "))
 
-        if prompt_length > 128 or chosen_length > 512 or rejected_length > 512:
+        if prompt_length > 128 or chosen_length > 512 or rejected_length > 512 or chosen_score < 5 or chosen_score <= rejected_score:
             continue
 
         num_samples += 1
