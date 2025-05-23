@@ -32,9 +32,14 @@ def get_log_prob(logits, labels, prompt_lengths):
     return response_log_probs / response_lengths
 
 def loss_dpo(chosen, rejected, chosen_ref, rejected_ref, beta):
-    relative = chosen - rejected
-    relative_ref = chosen_ref - rejected_ref
-    return -torch.log(torch.sigmoid(beta * (relative - relative_ref))).mean()
+
+    preferred = chosen - chosen_ref
+    rejected = rejected - rejected_ref
+    
+    reward_acc = (preferred > rejected).float()
+    reward = preferred - rejected
+
+    return -F.logsigmoid(beta * reward).mean(), reward_acc.mean(), reward.mean()
 
 def train(model, ref_model, dataloader, device, cfg, scheduler, optimizer, tokenizer):
     ref_model.eval()
@@ -72,15 +77,14 @@ def train(model, ref_model, dataloader, device, cfg, scheduler, optimizer, token
                         ref_model(rejected_ids, attention_mask=rejected_mask).logits,
                         rejected_ids, prompt_len)
 
-                loss = loss_dpo(chosen_lp, rejected_lp, chosen_lp_ref, rejected_lp_ref, cfg.beta)
+                loss, reward_acc, reward = loss_dpo(chosen_lp, rejected_lp, chosen_lp_ref, rejected_lp_ref, cfg.beta)
                 
                 loss = loss / grad_accum_steps
                 loss.backward()
+                scheduler.step()
 
                 if (iter_idx + 1) % grad_accum_steps == 0:
-                    print("stepping")
                     optimizer.step()
-                    scheduler.step()
                     optimizer.zero_grad()
 
                 if (iter_idx + 1) % cfg.log_steps == 0:
@@ -89,11 +93,15 @@ def train(model, ref_model, dataloader, device, cfg, scheduler, optimizer, token
                     tqdm.write(
                         f"epoch {epoch}, step {iter_idx}, "
                         f"loss {loss * grad_accum_steps:.4f}, "
+                        f"reward_acc {reward_acc:.4f}, "
+                        f"reward {reward:.4f}, "
                         f"lr {scheduler.get_last_lr()[0]:.2e}, "
                         f"grad_norm {grad_norm:.2f}"
                     )
                     wandb.log({
                         "loss": loss * grad_accum_steps,
+                        "reward_acc": reward_acc,
+                        "reward": reward,
                         "lr": scheduler.get_last_lr()[0],
                         "grad_norm": grad_norm
                     })
@@ -126,8 +134,8 @@ if __name__ == "__main__":
     dataloader = DataLoader(dataset, batch_size=cfg.batch_size, shuffle=True)
 
     optimizer = torch.optim.AdamW(model.parameters(), lr=cfg.learning_rate)
-    num_training_steps = len(dataloader) * cfg.num_epochs // cfg.gradient_accumulation_steps
-    num_warmup_steps = int(0.1 * num_training_steps) // cfg.gradient_accumulation_steps
+    num_training_steps = len(dataloader) * cfg.num_epochs
+    num_warmup_steps = int(0.1 * num_training_steps)
 
     scheduler = get_cosine_schedule_with_warmup(
         optimizer,
