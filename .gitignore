@@ -7,7 +7,8 @@ data/output/
 *.pdf
 processed_dataset/**
 ckp/**
-RLAIF/config.py
+**/config.py
+**/vllm/
 
 # ZST
 **/models/**
