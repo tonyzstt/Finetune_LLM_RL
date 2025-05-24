@@ -1,6 +1,7 @@
 from datasets import load_dataset
 import json
 import os
+import re
 from tqdm import tqdm
 
 
@@ -30,6 +31,15 @@ def preprocess_ultrafeedback_dataset(dataset, output_file):
         if prompt_length > 128 or chosen_length > 512 or rejected_length > 512 or chosen_score < 5 or chosen_score <= rejected_score:
             continue
 
+        if bool(re.fullmatch(r"[A-Za-z0-9\s.,!?;:'\"()-]*", prompt)) == False:
+            continue
+        
+        if bool(re.fullmatch(r"[A-Za-z0-9\s.,!?;:'\"()-]*", chosen)) == False:
+            continue
+        
+        if bool(re.fullmatch(r"[A-Za-z0-9\s.,!?;:'\"()-]*", rejected)) == False:
+            continue
+
         num_samples += 1
 
         message = {
@@ -57,7 +67,7 @@ if __name__ == "__main__":
 
     output_dir = "../processed_dataset"
     os.makedirs(output_dir, exist_ok=True)
-    ds = load_dataset("HuggingFaceH4/ultrafeedback_binarized", split="train_prefs")
+    ds = load_dataset("HuggingFaceH4/ultrafeedback_binarized", split="test_prefs")
     
-    output_file = os.path.join(output_dir, "ultrafeedback_binarized_train_prefs.json")
+    output_file = os.path.join(output_dir, "ultrafeedback_binarized_test_prefs.json")
     preprocess_ultrafeedback_dataset(ds, output_file)
