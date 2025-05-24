@@ -65,7 +65,9 @@ class SFTDataset(Dataset):
             token_start = min(token_start, self.max_length)
             token_end = min(token_end, self.max_length)
             labels[:token_start] = IGNORE_INDEX
-            labels[token_start:token_end] = input_ids[token_start:token_end]
+
+            # The +1 is for the eos token
+            labels[token_start:token_end+1] = input_ids[token_start:token_end+1]
 
         # Check if input_ids and labels are correct by converting them back to text
         if False:
