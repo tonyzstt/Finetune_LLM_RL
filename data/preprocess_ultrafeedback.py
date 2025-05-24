@@ -67,7 +67,11 @@ if __name__ == "__main__":
 
     output_dir = "../processed_dataset"
     os.makedirs(output_dir, exist_ok=True)
-    ds = load_dataset("HuggingFaceH4/ultrafeedback_binarized", split="test_prefs")
     
+    ds = load_dataset("HuggingFaceH4/ultrafeedback_binarized", split="train_prefs")
+    output_file = os.path.join(output_dir, "ultrafeedback_binarized_train_prefs.json")
+    preprocess_ultrafeedback_dataset(ds, output_file)
+    
+    ds = load_dataset("HuggingFaceH4/ultrafeedback_binarized", split="test_prefs")
     output_file = os.path.join(output_dir, "ultrafeedback_binarized_test_prefs.json")
     preprocess_ultrafeedback_dataset(ds, output_file)
