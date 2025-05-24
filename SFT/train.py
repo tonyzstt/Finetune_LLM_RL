@@ -41,7 +41,7 @@ def train(model, dataloader, optimizer, device, scheduler, cfg, save_dir):
 
                 outputs = model(input_ids=input_ids, attention_mask=attention_mask, labels=labels)
                 loss = outputs.loss
-
+                running_loss += loss.item()
                 loss = loss / grad_accum_steps
                 loss.backward()
 
@@ -52,16 +52,14 @@ def train(model, dataloader, optimizer, device, scheduler, cfg, save_dir):
                     optimizer.step()
                     scheduler.step()
                     optimizer.zero_grad()
-                    
-                running_loss += loss.item()
                 
                 if iter % log_steps == 0:
-                    avg_loss = running_loss / log_steps
+                    running_loss = running_loss / log_steps
                     grad_norm = get_grad_norm(model)
-                    tqdm.write(f"epoch: {epoch}, iter: {iter}, avg_loss: {avg_loss}, lr: {scheduler.get_last_lr()[0]}, grad_norm: {grad_norm}")
-                    wandb.log({"avg_loss": avg_loss, "lr": scheduler.get_last_lr()[0], "grad_norm": grad_norm})
+                    tqdm.write(f"epoch: {epoch}, iter: {iter}, avg_loss: {running_loss}, lr: {scheduler.get_last_lr()[0]}, grad_norm: {grad_norm}")
+                    wandb.log({"avg_loss": running_loss, "lr": scheduler.get_last_lr()[0], "grad_norm": grad_norm})
                     
-                    pbar.set_postfix(avg_loss=avg_loss, lr=scheduler.get_last_lr()[0])
+                    pbar.set_postfix(avg_loss=running_loss, lr=scheduler.get_last_lr()[0])
                     running_loss = 0.0
                     
                 if iter % save_steps == 0:
@@ -84,23 +82,22 @@ if __name__ == "__main__":
     learning_rate = config['learning_rate']
     max_length = config['max_length']
     save_dir = config['save_dir']
-    num_warmup_steps = config['warm_up_steps']
     
     wandb.init(project="sft", config=config)
     
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print("Using device:", device)
     
-    tokenizer = AutoTokenizer.from_pretrained(model_name)
+    tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True, use_fast=False)
     tokenizer.pad_token = tokenizer.eos_token
-    model = AutoModelForCausalLM.from_pretrained(model_name).to(device)
+    model = AutoModelForCausalLM.from_pretrained(model_name, trust_remote_code=True).to(device)
     
     dataset = SFTDataset(data_path=data_path_list, tokenizer=tokenizer, max_length=max_length)
     dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
     
     optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate)
-    num_training_steps = len(dataloader) * num_epochs // cfg['gradient_accumulation_steps']
-    num_warmup_steps = int(num_training_steps * 0.1) // cfg['gradient_accumulation_steps']
+    num_training_steps = len(dataloader) * num_epochs // config['gradient_accumulation_steps']
+    num_warmup_steps = int(num_training_steps * 0.05) 
     
     scheduler = get_cosine_schedule_with_warmup(
         optimizer,

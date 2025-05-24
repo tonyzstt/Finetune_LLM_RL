@@ -5,6 +5,7 @@ import torch
 from torch.utils.data import Dataset
 from transformers import PreTrainedTokenizer
 
+IGNORE_INDEX = -100
 
 class SFTDataset(Dataset):
     def __init__(
@@ -55,7 +56,7 @@ class SFTDataset(Dataset):
         )
         input_ids = encoding['input_ids'].squeeze(0)
         attention_mask = encoding['attention_mask'].squeeze(0)
-        labels = input_ids.clone().fill_(self.tokenizer.pad_token_id)
+        labels = input_ids.clone().fill_(IGNORE_INDEX)
         
         for start, end in assistant_spans:
             token_start = self.tokenizer(conversation[:start], add_special_tokens=False, return_tensors="pt")["input_ids"].size(1)
@@ -63,14 +64,23 @@ class SFTDataset(Dataset):
             # Clamp to max_length
             token_start = min(token_start, self.max_length)
             token_end = min(token_end, self.max_length)
+            labels[:token_start] = IGNORE_INDEX
             labels[token_start:token_end] = input_ids[token_start:token_end]
 
         # Check if input_ids and labels are correct by converting them back to text
         if False:
-            decoded_input = self.tokenizer.decode(input_ids, skip_special_tokens=True)
-            decoded_labels = self.tokenizer.decode(labels, skip_special_tokens=True)
+            print(input_ids)
+            print(labels)
+            labels[labels == IGNORE_INDEX] = self.tokenizer.pad_token_id
+            decoded_input = self.tokenizer.decode(input_ids, skip_special_tokens=False, clean_up_tokenization_spaces=False)
+            decoded_labels = self.tokenizer.decode(labels, skip_special_tokens=False, clean_up_tokenization_spaces=False)
+            print("-----------------Start-----------------")
             print(f"Decoded input: {decoded_input}")
+            print("--------------------------------")
             print(f"Decoded labels: {decoded_labels}")
+            print("-----------------End-----------------")
+            print(attention_mask)
+            exit()
             
         return {
             'input_ids': input_ids,
