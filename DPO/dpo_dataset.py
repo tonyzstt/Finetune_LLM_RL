@@ -16,8 +16,8 @@ class DPODataset(Dataset):
         chosen = example['chosen']
         rejected = example['rejected']
 
-        prompt_chosen = prompt + chosen + "<|im_end|>\n"
-        prompt_rejected = prompt + rejected + "<|im_end|>\n"
+        prompt_chosen = prompt + chosen + "<|im_end|>\n" + self.tokenizer.eos_token
+        prompt_rejected = prompt + rejected + "<|im_end|>\n" + self.tokenizer.eos_token
 
         enc_chosen = self.tokenizer(prompt_chosen, padding='max_length', truncation=True, max_length=self.max_length, return_tensors='pt')
         enc_rejected = self.tokenizer(prompt_rejected, padding='max_length', truncation=True, max_length=self.max_length, return_tensors='pt')
