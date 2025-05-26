@@ -68,9 +68,14 @@ class SFTDataset(Dataset):
 
             # The +1 is for the eos token
             labels[token_start:token_end+1] = input_ids[token_start:token_end+1]
+            attention_mask[token_end] = 1
 
         # Check if input_ids and labels are correct by converting them back to text
         if False:
+            print(labels[token_end-1], input_ids[token_end-1], attention_mask[token_end-1])
+            print(labels[token_end], input_ids[token_end], attention_mask[token_end])
+            print(labels[token_end+1], input_ids[token_end+1], attention_mask[token_end+1])
+            print(labels[token_end+2], input_ids[token_end+2], attention_mask[token_end+2])
             print(input_ids)
             print(labels)
             labels[labels == IGNORE_INDEX] = self.tokenizer.pad_token_id
