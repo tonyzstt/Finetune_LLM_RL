@@ -29,6 +29,7 @@ class SFTDataset(Dataset):
         messages = self.data[idx]['messages']
         
         conversation = ""
+        system_prompt = "You are a helpful assistant."
         assistant_spans = []
         
         for msg in messages:
@@ -39,7 +40,7 @@ class SFTDataset(Dataset):
                 if content.strip():
                     conversation += f"<|im_start|>system\n{content}<|im_end|>\n"
             elif role == 'user':
-                conversation += f"<|im_start|>user\n{content}<|im_end|>\n"
+                conversation += f"<|im_start|>system\n{system_prompt}<|im_end|>\n<|im_start|>user\n{content}<|im_end|>\n"
             elif role == 'assistant':
                 conversation += "<|im_start|>assistant\n"
                 start = len(conversation)
@@ -67,8 +68,12 @@ class SFTDataset(Dataset):
             labels[:token_start] = IGNORE_INDEX
 
             # The +1 is for the eos token
-            labels[token_start:token_end+1] = input_ids[token_start:token_end+1]
-            attention_mask[token_end] = 1
+            if token_end == self.max_length:
+                labels[token_start:token_end] = input_ids[token_start:token_end]
+                attention_mask[-1] = 1
+            else:
+                labels[token_start:token_end+1] = input_ids[token_start:token_end+1]
+                attention_mask[token_end] = 1
 
         # Check if input_ids and labels are correct by converting them back to text
         if False:

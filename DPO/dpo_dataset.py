@@ -12,7 +12,7 @@ class DPODataset(Dataset):
 
     def __getitem__(self, idx):
         example = self.data[idx]
-        prompt = f"<|im_start|>user\n{example['input']}<|im_end|>\n<|im_start|>assistant\n"
+        prompt = f"<|im_start|>system\nYou are a helpful assistant.<|im_end|>\n<|im_start|>user\n{example['input']}<|im_end|>\n<|im_start|>assistant\n"
         chosen = example['chosen']
         rejected = example['rejected']
 

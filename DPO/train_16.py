@@ -8,6 +8,7 @@ import torch.nn.functional as F
 from transformers import get_cosine_schedule_with_warmup
 import wandb
 from omegaconf import OmegaConf
+from torch.cuda.amp import autocast, GradScaler
 
 
 def get_grad_norm(model):
@@ -47,8 +48,12 @@ def train(model, ref_model, dataloader, device, cfg, scheduler, optimizer, token
     ref_model.eval()
     ref_model.requires_grad_(False)
     model.train()
+    scaler = GradScaler()
+    autocast_ctx = torch.amp.autocast('cuda', dtype=torch.bfloat16) if torch.cuda.is_available() else torch.amp.autocast('cuda')
     
-    running_loss = 0.0           
+    running_loss = 0.0    
+    running_reward_acc = 0.0
+    running_reward = 0.0
     iter_idx = 0
     grad_accum_steps = cfg.gradient_accumulation_steps
     optimizer.zero_grad()
@@ -64,11 +69,13 @@ def train(model, ref_model, dataloader, device, cfg, scheduler, optimizer, token
                 chosen_mask   = batch['attention_mask_chosen'].to(device)
                 rejected_mask = batch['attention_mask_rejected'].to(device)
 
-                chosen_logits   = model(chosen_ids,   attention_mask=chosen_mask).logits
-                rejected_logits = model(rejected_ids, attention_mask=rejected_mask).logits
+                with autocast_ctx:
 
-                chosen_lp   = get_log_prob(chosen_logits,   chosen_ids,   prompt_len)
-                rejected_lp = get_log_prob(rejected_logits, rejected_ids, prompt_len)
+                    chosen_logits   = model(chosen_ids,   attention_mask=chosen_mask).logits
+                    rejected_logits = model(rejected_ids, attention_mask=rejected_mask).logits
+
+                    chosen_lp   = get_log_prob(chosen_logits,   chosen_ids,   prompt_len)
+                    rejected_lp = get_log_prob(rejected_logits, rejected_ids, prompt_len)
 
 
                 with torch.no_grad():
@@ -79,34 +86,50 @@ def train(model, ref_model, dataloader, device, cfg, scheduler, optimizer, token
                         ref_model(rejected_ids, attention_mask=rejected_mask).logits,
                         rejected_ids, prompt_len)
 
-                loss, reward_acc, reward = loss_dpo(chosen_lp, rejected_lp, chosen_lp_ref, rejected_lp_ref, cfg.beta)
+                with autocast_ctx:
+                    loss, reward_acc, reward = loss_dpo(chosen_lp, rejected_lp, chosen_lp_ref, rejected_lp_ref, cfg.beta)
                 
+                running_loss += loss.item()
+                running_reward_acc += reward_acc.item()
+                running_reward += reward.item()
+
                 loss = loss / grad_accum_steps
-                loss.backward()
+                scaler.scale(loss).backward()
                 scheduler.step()
 
                 if (iter_idx + 1) % grad_accum_steps == 0:
-                    optimizer.step()
+                    scaler.unscale_(optimizer)
+                    torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+                    scaler.step(optimizer)
+                    scaler.update()
                     optimizer.zero_grad()
 
                 if (iter_idx + 1) % cfg.log_steps == 0:
                     grad_norm = get_grad_norm(model)
 
+                    running_loss /= cfg.log_steps
+                    running_reward_acc /= cfg.log_steps
+                    running_reward /= cfg.log_steps
+
                     tqdm.write(
                         f"epoch {epoch}, step {iter_idx}, "
-                        f"loss {loss * grad_accum_steps:.4f}, "
-                        f"reward_acc {reward_acc:.4f}, "
-                        f"reward {reward:.4f}, "
+                        f"loss {running_loss:.4f}, "
+                        f"reward_acc {running_reward_acc:.4f}, "
+                        f"reward {running_reward:.4f}, "
                         f"lr {scheduler.get_last_lr()[0]:.2e}, "
                         f"grad_norm {grad_norm:.2f}"
                     )
                     wandb.log({
-                        "loss": loss * grad_accum_steps,
-                        "reward_acc": reward_acc,
-                        "reward": reward,
+                        "loss": running_loss,
+                        "reward_acc": running_reward_acc,
+                        "reward": running_reward,
                         "lr": scheduler.get_last_lr()[0],
                         "grad_norm": grad_norm
                     })
+
+                    running_loss = 0.0
+                    running_reward_acc = 0.0
+                    running_reward = 0.0
 
                 if (iter_idx + 1) % cfg.save_steps == 0:
                     model.save_pretrained(f"/viscam/u/tonyzst/Research/test/DPO/ckpts/step_{iter_idx}")
@@ -131,6 +154,7 @@ if __name__ == "__main__":
     tokenizer.pad_token = tokenizer.eos_token
     model = AutoModelForCausalLM.from_pretrained(cfg.model_name).to(device)
     ref_model = AutoModelForCausalLM.from_pretrained(cfg.model_name).to(device)
+    model.gradient_checkpointing_enable()
 
     dataset = DPODataset(data, tokenizer, max_length=cfg.max_length)
     dataloader = DataLoader(dataset, batch_size=cfg.batch_size, shuffle=True)
