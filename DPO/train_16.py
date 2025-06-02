@@ -20,40 +20,50 @@ def get_grad_norm(model):
     total_norm = total_norm ** 0.5
     return total_norm
 
-def get_log_prob(logits, labels, prompt_lengths):
-    log_probs = F.log_softmax(logits, dim=-1)
-    token_log_probs = torch.gather(log_probs, -1, labels.unsqueeze(-1)).squeeze(-1)
+def get_log_prob(logits, labels, prompt_lengths, attention_mask):
+    shift_logits = logits[..., :-1, :].contiguous()
+    shift_labels = labels[..., 1:].contiguous()
+    shift_mask = attention_mask[..., 1:].contiguous()
 
-    _, seq_len = labels.shape
-    response_mask = torch.arange(seq_len, device=labels.device).unsqueeze(0) >= prompt_lengths.unsqueeze(1)
-    response_mask = response_mask.float()
+    log_probs = F.log_softmax(shift_logits, dim=-1)
+    token_log_probs = torch.gather(log_probs, -1, shift_labels.unsqueeze(-1)).squeeze(-1)
+
+    batch_size, seq_len = shift_labels.shape
+    shift_prompt_lengths = (prompt_lengths - 1).clamp(min=0)
+    response_mask = torch.arange(seq_len, device=shift_labels.device).unsqueeze(0) >= shift_prompt_lengths.unsqueeze(1)
+    response_mask = response_mask.float() # * shift_mask.float()
+
     response_log_probs = (token_log_probs * response_mask).sum(dim=-1)
     response_lengths = response_mask.sum(dim=-1).clamp(min=1)
 
     return response_log_probs / response_lengths
 
+
 def loss_dpo(chosen, rejected, chosen_ref, rejected_ref, beta):
-
-    preferred_advantage = chosen - chosen_ref
-    rejected_advantage = rejected - rejected_ref
+    chosen_ratio = chosen - rejected
+    rejected_ratio = chosen_ref - rejected_ref
     
-    reward_acc = (preferred_advantage > rejected_advantage).float()
-    reward = preferred_advantage - rejected_advantage
+    logits = beta * (chosen_ratio - rejected_ratio)
+    loss = -F.logsigmoid(logits).mean()
+    
+    reward_acc = (chosen_ratio > rejected_ratio).float().mean().detach()
+    reward_diff = (chosen_ratio - rejected_ratio).mean().detach()
 
-    loss = -F.logsigmoid(beta * reward).mean()
-
-    return loss, reward_acc.mean(), reward.mean()
+    return loss, reward_acc, reward_diff, chosen_ratio.mean().detach(), rejected_ratio.mean().detach()
 
 def train(model, ref_model, dataloader, device, cfg, scheduler, optimizer, tokenizer):
     ref_model.eval()
-    ref_model.requires_grad_(False)
+    for param in ref_model.parameters():
+        param.requires_grad = False
+        
     model.train()
     scaler = GradScaler()
-    autocast_ctx = torch.amp.autocast('cuda', dtype=torch.bfloat16) if torch.cuda.is_available() else torch.amp.autocast('cuda')
     
     running_loss = 0.0    
     running_reward_acc = 0.0
     running_reward = 0.0
+    running_chosen_ratio = 0.0
+    running_rejected_ratio = 0.0
     iter_idx = 0
     grad_accum_steps = cfg.gradient_accumulation_steps
     optimizer.zero_grad()
@@ -62,69 +72,76 @@ def train(model, ref_model, dataloader, device, cfg, scheduler, optimizer, token
     with tqdm(total=total_steps) as pbar:
         for epoch in range(cfg.num_epochs):
             for batch in dataloader:
-                prompt_len = batch['attention_mask_prompt'].sum(dim=1).to(device)
-
+                # Get prompt lengths (need to account for shifting)
+                prompt_len = batch['attention_mask_prompt'].sum(dim=1).to(device) - 1  # Subtract 1 for shifting
                 chosen_ids    = batch['input_ids_chosen'].to(device)
                 rejected_ids  = batch['input_ids_rejected'].to(device)
                 chosen_mask   = batch['attention_mask_chosen'].to(device)
                 rejected_mask = batch['attention_mask_rejected'].to(device)
 
-                with autocast_ctx:
-
+                with autocast():
                     chosen_logits   = model(chosen_ids,   attention_mask=chosen_mask).logits
                     rejected_logits = model(rejected_ids, attention_mask=rejected_mask).logits
 
-                    chosen_lp   = get_log_prob(chosen_logits,   chosen_ids,   prompt_len)
-                    rejected_lp = get_log_prob(rejected_logits, rejected_ids, prompt_len)
+                    chosen_lp   = get_log_prob(chosen_logits,   chosen_ids,   prompt_len, chosen_mask)
+                    rejected_lp = get_log_prob(rejected_logits, rejected_ids, prompt_len, rejected_mask)
 
-
-                with torch.no_grad():
+                with torch.no_grad(), autocast():
                     chosen_lp_ref   = get_log_prob(
                         ref_model(chosen_ids,   attention_mask=chosen_mask).logits,
-                        chosen_ids, prompt_len)
+                        chosen_ids, prompt_len, chosen_mask)
                     rejected_lp_ref = get_log_prob(
                         ref_model(rejected_ids, attention_mask=rejected_mask).logits,
-                        rejected_ids, prompt_len)
+                        rejected_ids, prompt_len, rejected_mask)
 
-                with autocast_ctx:
-                    loss, reward_acc, reward = loss_dpo(chosen_lp, rejected_lp, chosen_lp_ref, rejected_lp_ref, cfg.beta)
+                with autocast():
+                    loss, reward_acc, reward_diff, chosen_ratio, rejected_ratio = loss_dpo(chosen_lp, rejected_lp, chosen_lp_ref, rejected_lp_ref, cfg.beta)
                 
                 running_loss += loss.item()
                 running_reward_acc += reward_acc.item()
-                running_reward += reward.item()
+                running_reward += reward_diff.item()
+                running_chosen_ratio += chosen_ratio.item()
+                running_rejected_ratio += rejected_ratio.item()
 
                 loss = loss / grad_accum_steps
                 scaler.scale(loss).backward()
-                scheduler.step()
 
                 if (iter_idx + 1) % grad_accum_steps == 0:
                     scaler.unscale_(optimizer)
                     torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
                     scaler.step(optimizer)
                     scaler.update()
+                    scheduler.step()
                     optimizer.zero_grad()
 
                 if (iter_idx + 1) % cfg.log_steps == 0:
                     grad_norm = get_grad_norm(model)
 
-                    running_loss /= cfg.log_steps
-                    running_reward_acc /= cfg.log_steps
-                    running_reward /= cfg.log_steps
+                    avg_loss = running_loss / cfg.log_steps
+                    avg_reward_acc = running_reward_acc / cfg.log_steps
+                    avg_reward = running_reward / cfg.log_steps
+                    avg_chosen_ratio = running_chosen_ratio / cfg.log_steps
+                    avg_rejected_ratio = running_rejected_ratio / cfg.log_steps
 
                     tqdm.write(
                         f"epoch {epoch}, step {iter_idx}, "
-                        f"loss {running_loss:.4f}, "
-                        f"reward_acc {running_reward_acc:.4f}, "
-                        f"reward {running_reward:.4f}, "
+                        f"loss {avg_loss:.4f}, "
+                        f"reward_acc {avg_reward_acc:.4f}, "
+                        f"reward_diff {avg_reward:.4f}, "
+                        f"chosen_ratio {avg_chosen_ratio:.4f}, "
+                        f"rejected_ratio {avg_rejected_ratio:.4f}, "
                         f"lr {scheduler.get_last_lr()[0]:.2e}, "
                         f"grad_norm {grad_norm:.2f}"
                     )
                     wandb.log({
-                        "loss": running_loss,
-                        "reward_acc": running_reward_acc,
-                        "reward": running_reward,
+                        "loss": avg_loss,
+                        "reward_acc": avg_reward_acc,
+                        "reward_diff": avg_reward,
+                        "chosen_ratio": avg_chosen_ratio,
+                        "rejected_ratio": avg_rejected_ratio,
                         "lr": scheduler.get_last_lr()[0],
-                        "grad_norm": grad_norm
+                        "grad_norm": grad_norm,
+                        "step": iter_idx + 1
                     })
 
                     running_loss = 0.0
@@ -132,14 +149,16 @@ def train(model, ref_model, dataloader, device, cfg, scheduler, optimizer, token
                     running_reward = 0.0
 
                 if (iter_idx + 1) % cfg.save_steps == 0:
-                    model.save_pretrained(f"/viscam/u/tonyzst/Research/test/DPO/ckpts/step_{iter_idx}")
-                    tokenizer.save_pretrained(f"/viscam/u/tonyzst/Research/test/DPO/ckpts/step_{iter_idx}")
+                    model.save_pretrained(f"/viscam/u/tonyzst/Research/test/DPO/ckpts/step_{iter_idx + 1}")
+                    tokenizer.save_pretrained(f"/viscam/u/tonyzst/Research/test/DPO/ckpts/step_{iter_idx + 1}")
 
                 iter_idx += 1
                 pbar.update(1)
 
-        if iter_idx % cfg.log_steps:
-            wandb.log({"avg_loss_tail": loss * grad_accum_steps})
+        if iter_idx % cfg.log_steps != 0:
+            steps_remaining = iter_idx % cfg.log_steps
+            avg_loss = running_loss / steps_remaining
+            wandb.log({"final_avg_loss": avg_loss})
 
 if __name__ == "__main__":
     raw_cfg = OmegaConf.load("config/dpo.yaml")
@@ -160,8 +179,8 @@ if __name__ == "__main__":
     dataloader = DataLoader(dataset, batch_size=cfg.batch_size, shuffle=True)
 
     optimizer = torch.optim.AdamW(model.parameters(), lr=cfg.learning_rate)
-    num_training_steps = len(dataloader) * cfg.num_epochs
-    num_warmup_steps = int(0.1 * num_training_steps)
+    num_training_steps = len(dataloader) * cfg.num_epochs // cfg.gradient_accumulation_steps
+    num_warmup_steps = int(0.1 * num_training_steps) 
 
     scheduler = get_cosine_schedule_with_warmup(
         optimizer,

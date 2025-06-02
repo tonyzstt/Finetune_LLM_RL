@@ -15,7 +15,7 @@ class DPODataset(Dataset):
         prompt = f"<|im_start|>system\nYou are a helpful assistant.<|im_end|>\n<|im_start|>user\n{example['input']}<|im_end|>\n<|im_start|>assistant\n"
         chosen = example['chosen']
         rejected = example['rejected']
-
+        
         prompt_chosen = prompt + chosen + "<|im_end|>\n" + self.tokenizer.eos_token
         prompt_rejected = prompt + rejected + "<|im_end|>\n" + self.tokenizer.eos_token
 
@@ -30,6 +30,7 @@ class DPODataset(Dataset):
             'attention_mask_chosen': enc_chosen['attention_mask'].squeeze(0),
             'input_ids_rejected': enc_rejected['input_ids'].squeeze(0),
             'attention_mask_rejected': enc_rejected['attention_mask'].squeeze(0),
+            'prompt_lengths': enc_prompt['attention_mask'].sum(dim=-1),
         }
     
 
