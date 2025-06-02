@@ -1,4 +1,5 @@
 from torch.utils.data import Dataset
+from torch.nn.utils.rnn import pad_sequence
 from dataclasses import dataclass
 
 class RLOODataset(Dataset):
@@ -48,3 +49,19 @@ class RLOODataset(Dataset):
                 'input_ids_rejected': enc_rejected['input_ids'].squeeze(0),
                 'attention_mask_rejected': enc_rejected['attention_mask'].squeeze(0),
             }
+
+    def collate_fn(batch):
+        prompt = [item["prompt"] for item in batch]
+        ground_truth = [item["ground_truth"] for item in batch]
+
+        input_ids = [item["input_ids_prompt"] for item in batch]
+        input_ids = pad_sequence(input_ids, batch_first=True, padding_value=0)
+        attention_mask = [item["attention_mask_prompt"] for item in batch]
+        attention_mask = pad_sequence(attention_mask, batch_first=True, padding_value=0)
+
+        return {
+            "ground_truth": ground_truth,
+            "prompt": prompt,
+            "input_ids_prompt": input_ids,
+            "attention_mask_prompt": attention_mask
+        }
