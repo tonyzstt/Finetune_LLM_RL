@@ -54,21 +54,6 @@ def rloo_loss(response_lp_list, response_reward_list, k, device):
     return RLOOloss
 
 
-def process_ground_truth(ground_truth):
-    target = ground_truth["target"]
-    numbers = ground_truth["numbers"]
-    n = len(ground_truth["target"])
-    numbers_list_incorrect = [l.tolist() for l in numbers]
-    numbers_list_correct = list(zip(*numbers_list_incorrect))
-    group_truth_list = []
-    for i in range(n):
-        truth = dict()
-        truth["target"] = target[i]
-        truth["numbers"] = numbers_list_correct[i]
-        group_truth_list.append(truth)
-    return group_truth_list
-
-
 def train(model, tokenizer, dataloader, optimizer, device, scheduler, cfg, max_length=1024, reward_model=None):
     
     num_epochs = cfg['num_epochs']
@@ -120,19 +105,25 @@ def train(model, tokenizer, dataloader, optimizer, device, scheduler, cfg, max_l
                         # get the reward from the reward function
                         batch_size = response_ids.shape[0]
                         response_reward = []
-                        ground_truth_list = process_ground_truth(batch["ground_truth"])
-                        # print("ground_truth_list:", ground_truth_list)
 
                         for i in range(batch_size):
-                            ground_truth = ground_truth_list[i]
+                            ground_truth = batch["ground_truth"][i]
                             prompt_text = tokenizer.decode(input_ids_prompt[i], skip_special_tokens=True)
                             response_text = tokenizer.decode(response_ids[i], skip_special_tokens=True)
                             length = len(prompt_text)
                             response_no_prompt = response_text[length:]
+                            # print("ground_truth:", ground_truth)
                             # print("response_text:", response_text)
                             # print("prompt_text:", prompt_text)
                             # print("response_no_prompt:", response_no_prompt)
-                            reward = eval_countdown.compute_score(response_no_prompt, ground_truth)
+                            reward = eval_countdown.compute_score(
+                                solution_str=f"Assistant: {response_no_prompt}".strip(),
+                                ground_truth=ground_truth,
+                                method="strict",
+                                format_score=0.1,
+                                score=1.0
+                            )
+                            # print("reward:", reward)
                             response_reward.append(reward)
 
                         response_reward = torch.tensor(response_reward, dtype=torch.float32, device=device)
@@ -141,6 +132,7 @@ def train(model, tokenizer, dataloader, optimizer, device, scheduler, cfg, max_l
                     response_reward_list.append(response_reward)
 
                 loss = rloo_loss(response_lp_list, response_reward_list, k, device)
+                print("loss:", loss.item())
 
                 loss = loss / grad_accum_steps
                 loss.backward()
@@ -197,11 +189,15 @@ if __name__ == "__main__":
 
     data = json.load(open(data_path, "r"))
     dataset = RLOODataset(data=data, tokenizer=tokenizer, task=task, max_length=max_length)
-    dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
+
+    if task == "countdown" and eval_method == "reward_function":
+        dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True, collate_fn=RLOODataset.collate_fn)
+    else:
+        dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
 
     optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate)
-    num_training_steps = len(dataloader) * num_epochs
-    num_warmup_steps = int(0.1 * num_training_steps)  
+    num_training_steps = len(dataloader) * num_epochs // config['gradient_accumulation_steps']
+    num_warmup_steps = int(0.05 * num_training_steps)  
 
     scheduler = get_cosine_schedule_with_warmup(
         optimizer,
