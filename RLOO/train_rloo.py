@@ -132,7 +132,7 @@ def train(model, tokenizer, dataloader, optimizer, device, scheduler, cfg, max_l
                     response_reward_list.append(response_reward)
 
                 loss = rloo_loss(response_lp_list, response_reward_list, k, device)
-                print("loss:", loss.item())
+                # print("loss:", loss.item())
 
                 loss = loss / grad_accum_steps
                 loss.backward()

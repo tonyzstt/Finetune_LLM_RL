@@ -9,7 +9,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'e
 import countdown
 
 
-def preprocess_countdown_dataset(dataset, output_file, max_length=1024, max_tokens=512):
+def preprocess_countdown_dataset(dataset, output_file, max_length=1024, max_tokens=512, n=1000):
     """
     Preprocess the countdown dataset by adding preferred and dispreferred responses with corresponding scores.
     """
@@ -21,6 +21,9 @@ def preprocess_countdown_dataset(dataset, output_file, max_length=1024, max_toke
     # Open the JSON array
     with open(output_file, "w") as f:
         f.write("[")
+    
+    # ramdom sample n items from the dataset
+    dataset = dataset.shuffle(seed=42).select(range(n))
 
     for item in tqdm(dataset):
 
@@ -80,5 +83,6 @@ if __name__ == "__main__":
     output_dir = "../processed_dataset"
     os.makedirs(output_dir, exist_ok=True)
     ds = load_dataset("Jiayi-Pan/Countdown-Tasks-3to4", split="train")
-    output_file = os.path.join(output_dir, "countdown_train.json")
-    preprocess_countdown_dataset(ds, output_file)
+    n = 1000
+    output_file = os.path.join(output_dir, f"countdown_train_sampled_{n}.json")
+    preprocess_countdown_dataset(ds, output_file, n)
