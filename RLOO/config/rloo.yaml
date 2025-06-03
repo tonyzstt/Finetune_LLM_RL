@@ -1,12 +1,12 @@
 model_name: "/home/ubuntu/CS224R-Project/models/sft_warm_curr_best"
-data_path: "../processed_dataset/countdown_train.json"
+data_path: "../processed_dataset/countdown_train_sampled_1000.json"
 batch_size: 2
 max_length: 512
 learning_rate: 0.00002
 num_epochs: 1
 gradient_accumulation_steps: 16
 log_steps: 10
-save_steps: 2000
+save_steps: 100
 eval_method: "reward_function"
 reward_model_name: "Qwen/Qwen2.5-0.5B"
 reward_model_weights_path: "reward_model.pt"
