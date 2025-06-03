@@ -8,7 +8,7 @@ import torch.nn.functional as F
 from transformers import get_cosine_schedule_with_warmup
 import wandb
 from omegaconf import OmegaConf
-from torch.cuda.amp import autocast, GradScaler
+from torch.amp import autocast, GradScaler
 
 
 def get_grad_norm(model):
@@ -20,34 +20,37 @@ def get_grad_norm(model):
     total_norm = total_norm ** 0.5
     return total_norm
 
-def get_log_prob(logits, labels, prompt_lengths, attention_mask):
-    shift_logits = logits[..., :-1, :].contiguous()
-    shift_labels = labels[..., 1:].contiguous()
-    shift_mask = attention_mask[..., 1:].contiguous()
+def get_log_prob(logits, labels, prompt_lengths, attention_mask, tokenizer):
+    # Shift logits and labels for next token prediction
+    shift_logits = logits[:, :-1, :]  # Remove last token from logits
+    shift_labels = labels[:, 1:]      # Remove first token from labels
+    shift_mask = attention_mask[:, 1:]  # Remove first token from mask
 
+    # Compute log probabilities
     log_probs = F.log_softmax(shift_logits, dim=-1)
     token_log_probs = torch.gather(log_probs, -1, shift_labels.unsqueeze(-1)).squeeze(-1)
 
+    # Create response mask (only consider tokens after prompt)
     batch_size, seq_len = shift_labels.shape
-    shift_prompt_lengths = (prompt_lengths - 1).clamp(min=0)
-    response_mask = torch.arange(seq_len, device=shift_labels.device).unsqueeze(0) >= shift_prompt_lengths.unsqueeze(1)
-    response_mask = response_mask.float() # * shift_mask.float()
+    response_mask = torch.arange(seq_len, device=shift_labels.device).unsqueeze(0) >= prompt_lengths.unsqueeze(1)
+    response_mask = response_mask & shift_mask.bool()
 
+    # Compute average log probability of response tokens
     response_log_probs = (token_log_probs * response_mask).sum(dim=-1)
     response_lengths = response_mask.sum(dim=-1).clamp(min=1)
 
-    return response_log_probs / response_lengths
+    return response_log_probs #/ response_lengths
 
 
 def loss_dpo(chosen, rejected, chosen_ref, rejected_ref, beta):
-    chosen_ratio = chosen - rejected
-    rejected_ratio = chosen_ref - rejected_ref
+    chosen_ratio = chosen - chosen_ref
+    rejected_ratio = rejected - rejected_ref
     
     logits = beta * (chosen_ratio - rejected_ratio)
     loss = -F.logsigmoid(logits).mean()
     
     reward_acc = (chosen_ratio > rejected_ratio).float().mean().detach()
-    reward_diff = (chosen_ratio - rejected_ratio).mean().detach()
+    reward_diff = (chosen_ratio - rejected_ratio).float().mean().detach()
 
     return loss, reward_acc, reward_diff, chosen_ratio.mean().detach(), rejected_ratio.mean().detach()
 
@@ -79,22 +82,40 @@ def train(model, ref_model, dataloader, device, cfg, scheduler, optimizer, token
                 chosen_mask   = batch['attention_mask_chosen'].to(device)
                 rejected_mask = batch['attention_mask_rejected'].to(device)
 
-                with autocast():
+                # print("==============Chosen==============")
+                # print(tokenizer.decode(chosen_ids[0], skip_special_tokens=False))
+                # print(100 * "=")
+                # print(tokenizer.decode(rejected_ids[0], skip_special_tokens=False))
+                # print(100 * "=")
+                
+                
+
+                with autocast('cuda'):
                     chosen_logits   = model(chosen_ids,   attention_mask=chosen_mask).logits
+                    # print("==============Chosen Logits==============")
+                    # predicted_ids = torch.argmax(chosen_logits, dim=-1)
+                    # predicted_ids[0][:prompt_len[0]] = tokenizer.eos_token_id
+                    # print(tokenizer.decode(predicted_ids[0], skip_special_tokens=False))
+                    # print(100 * "=")
                     rejected_logits = model(rejected_ids, attention_mask=rejected_mask).logits
+                    # print("==============Rejected Logits==============")
+                    # predicted_ids = torch.argmax(rejected_logits, dim=-1)
+                    # predicted_ids[0][:prompt_len[0]] = tokenizer.eos_token_id
+                    # print(tokenizer.decode(predicted_ids[0], skip_special_tokens=False))
+                    # print(100 * "=")
+                    # exit()
+                    chosen_lp   = get_log_prob(chosen_logits,   chosen_ids,   prompt_len, chosen_mask, tokenizer)
+                    rejected_lp = get_log_prob(rejected_logits, rejected_ids, prompt_len, rejected_mask, tokenizer)
 
-                    chosen_lp   = get_log_prob(chosen_logits,   chosen_ids,   prompt_len, chosen_mask)
-                    rejected_lp = get_log_prob(rejected_logits, rejected_ids, prompt_len, rejected_mask)
-
-                with torch.no_grad(), autocast():
+                with torch.no_grad(), autocast('cuda'):
                     chosen_lp_ref   = get_log_prob(
                         ref_model(chosen_ids,   attention_mask=chosen_mask).logits,
-                        chosen_ids, prompt_len, chosen_mask)
+                        chosen_ids, prompt_len, chosen_mask, tokenizer)
                     rejected_lp_ref = get_log_prob(
                         ref_model(rejected_ids, attention_mask=rejected_mask).logits,
-                        rejected_ids, prompt_len, rejected_mask)
+                        rejected_ids, prompt_len, rejected_mask, tokenizer)
 
-                with autocast():
+                with autocast('cuda'):
                     loss, reward_acc, reward_diff, chosen_ratio, rejected_ratio = loss_dpo(chosen_lp, rejected_lp, chosen_lp_ref, rejected_lp_ref, cfg.beta)
                 
                 running_loss += loss.item()
@@ -174,6 +195,7 @@ if __name__ == "__main__":
     model = AutoModelForCausalLM.from_pretrained(cfg.model_name).to(device)
     ref_model = AutoModelForCausalLM.from_pretrained(cfg.model_name).to(device)
     model.gradient_checkpointing_enable()
+    model.config.use_cache = False
 
     dataset = DPODataset(data, tokenizer, max_length=cfg.max_length)
     dataloader = DataLoader(dataset, batch_size=cfg.batch_size, shuffle=True)
