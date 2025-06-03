@@ -30,7 +30,7 @@ def get_log_prob(logits, labels, prompt_lengths, attention_mask, tokenizer):
     log_probs = F.log_softmax(shift_logits, dim=-1)
     token_log_probs = torch.gather(log_probs, -1, shift_labels.unsqueeze(-1)).squeeze(-1)
 
-    # Create response mask (only consider tokens after prompt)
+    # Create response mask 
     batch_size, seq_len = shift_labels.shape
     response_mask = torch.arange(seq_len, device=shift_labels.device).unsqueeze(0) >= prompt_lengths.unsqueeze(1)
     response_mask = response_mask & shift_mask.bool()
@@ -39,7 +39,7 @@ def get_log_prob(logits, labels, prompt_lengths, attention_mask, tokenizer):
     response_log_probs = (token_log_probs * response_mask).sum(dim=-1)
     response_lengths = response_mask.sum(dim=-1).clamp(min=1)
 
-    return response_log_probs #/ response_lengths
+    return response_log_probs
 
 
 def loss_dpo(chosen, rejected, chosen_ref, rejected_ref, beta):
@@ -75,35 +75,17 @@ def train(model, ref_model, dataloader, device, cfg, scheduler, optimizer, token
     with tqdm(total=total_steps) as pbar:
         for epoch in range(cfg.num_epochs):
             for batch in dataloader:
-                # Get prompt lengths (need to account for shifting)
-                prompt_len = batch['attention_mask_prompt'].sum(dim=1).to(device) - 1  # Subtract 1 for shifting
+
+                prompt_len = batch['attention_mask_prompt'].sum(dim=1).to(device) - 1  
                 chosen_ids    = batch['input_ids_chosen'].to(device)
                 rejected_ids  = batch['input_ids_rejected'].to(device)
                 chosen_mask   = batch['attention_mask_chosen'].to(device)
-                rejected_mask = batch['attention_mask_rejected'].to(device)
-
-                # print("==============Chosen==============")
-                # print(tokenizer.decode(chosen_ids[0], skip_special_tokens=False))
-                # print(100 * "=")
-                # print(tokenizer.decode(rejected_ids[0], skip_special_tokens=False))
-                # print(100 * "=")
-                
-                
+                rejected_mask = batch['attention_mask_rejected'].to(device) 
 
                 with autocast('cuda'):
                     chosen_logits   = model(chosen_ids,   attention_mask=chosen_mask).logits
-                    # print("==============Chosen Logits==============")
-                    # predicted_ids = torch.argmax(chosen_logits, dim=-1)
-                    # predicted_ids[0][:prompt_len[0]] = tokenizer.eos_token_id
-                    # print(tokenizer.decode(predicted_ids[0], skip_special_tokens=False))
-                    # print(100 * "=")
                     rejected_logits = model(rejected_ids, attention_mask=rejected_mask).logits
-                    # print("==============Rejected Logits==============")
-                    # predicted_ids = torch.argmax(rejected_logits, dim=-1)
-                    # predicted_ids[0][:prompt_len[0]] = tokenizer.eos_token_id
-                    # print(tokenizer.decode(predicted_ids[0], skip_special_tokens=False))
-                    # print(100 * "=")
-                    # exit()
+
                     chosen_lp   = get_log_prob(chosen_logits,   chosen_ids,   prompt_len, chosen_mask, tokenizer)
                     rejected_lp = get_log_prob(rejected_logits, rejected_ids, prompt_len, rejected_mask, tokenizer)
 
