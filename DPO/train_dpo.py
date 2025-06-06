@@ -152,8 +152,8 @@ def train(model, ref_model, dataloader, device, cfg, scheduler, optimizer, token
                     running_reward = 0.0
 
                 if (iter_idx + 1) % cfg.save_steps == 0:
-                    model.save_pretrained(f"/viscam/u/tonyzst/Research/test/DPO/ckpts/step_{iter_idx + 1}")
-                    tokenizer.save_pretrained(f"/viscam/u/tonyzst/Research/test/DPO/ckpts/step_{iter_idx + 1}")
+                    model.save_pretrained(f"/viscam/u/tonyzst/Research/test/DPO/ckpts/step_continue_{iter_idx + 1}")
+                    tokenizer.save_pretrained(f"/viscam/u/tonyzst/Research/test/DPO/ckpts/step_continue_{iter_idx + 1}")
 
                 iter_idx += 1
                 pbar.update(1)
@@ -194,5 +194,5 @@ if __name__ == "__main__":
 
     train(model, ref_model, dataloader, device, cfg, scheduler, optimizer, tokenizer)
 
-    model.save_pretrained("/viscam/u/tonyzst/Research/test/DPO/ckpts/dpo_last")
-    tokenizer.save_pretrained("/viscam/u/tonyzst/Research/test/DPO/ckpts/dpo_last")
+    model.save_pretrained("/viscam/u/tonyzst/Research/test/DPO/ckpts/dpo_last_continue")
+    tokenizer.save_pretrained("/viscam/u/tonyzst/Research/test/DPO/ckpts/dpo_last_continue")
