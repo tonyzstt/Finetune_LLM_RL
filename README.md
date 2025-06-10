@@ -36,16 +36,23 @@ python train.py # You may need to manually modify path in DPO/config/dpo.yaml
 ```
 Trained models will be saved in `./DPO/ckpts` folder.
 
+### REINFORCE Leave One-Out
+To run RLOO on the countdown dataset, run:
+```
+python train_rloo.py # You may need to manually modify path in rloo/config/rloo.yaml
+```
+Trained models will be saved in `./RLOO/models` folder.
+
 ### Evaluation
 To evaluate the trianed model on the ultrafeedback dataset, run:
 ```
-python eval_ultrafeedback.py --model_path $model_path --dataset_path $dataset_path
+python eval_leaderboard_instruction.py --model_path $model_path --dataset_path $dataset_path
 ```
 To evaluate the trianed model on the countdown dataset, run:
 ```
-python eval_countdown.py --model_path $model_path --dataset_path $dataset_path
+python eval_leaderboard_countdown.py --model_path $model_path --dataset_path $dataset_path
 ```
 
 ### Extention
-- We implemented the first extention in `eval/inference_external_tool.py`, it is able to run countdown evaluation with the help of external tools.
-- More to be added...
+- External Tool: check `./data/generate_countdown_gt.py` to generate SFT data with external tool. Run `eval/eval_leaderboard_countdown_ext.py` for inference.
+- RLAIF: check `RLAIF/generate.py` to generate AI preference dataset.
