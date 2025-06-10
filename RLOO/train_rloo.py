@@ -171,8 +171,8 @@ def train(model, tokenizer, dataloader, optimizer, device, scheduler, cfg, max_l
                     running_reward = 0.0
 
                 if iter % save_steps == 0:
-                    model.save_pretrained(f"models/rloo_model_{iter}")
-                    tokenizer.save_pretrained(f"models/rloo_model_{iter}")
+                    model.save_pretrained(f"./models/rloo_model_{iter}")
+                    tokenizer.save_pretrained(f"./models/rloo_model_{iter}")
 
 if __name__ == "__main__":
     os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
@@ -239,5 +239,5 @@ if __name__ == "__main__":
         reward_model = None
 
     train(model, tokenizer, dataloader, optimizer, device, scheduler, config, max_length, reward_model)
-    model.save_pretrained("models/rloo_model")
-    tokenizer.save_pretrained("models/rloo_model")
+    model.save_pretrained("./models/rloo_model")
+    tokenizer.save_pretrained("./models/rloo_model")

@@ -1,11 +1,11 @@
-model_name: "/viscam/u/tonyzst/Research/test/SFT/models/sft_smol_70000"
-data_path: "/viscam/u/tonyzst/Research/test/processed_dataset/ultrafeedback_binarized_train_prefs.json"
-batch_size: 2
+model_name: "./ckpts_old/dpo_last_continue"
+data_path: "../processed_dataset/ultrafeedback_binarized_train_prefs_better2.json"
+batch_size: 4
 max_length: 1280
-learning_rate: 0.00002
-num_epochs: 1
+learning_rate: 0.000001
+num_epochs: 3
 beta: 0.1
 log_steps: 10
 save_steps: 2000
 gradient_accumulation_steps: 16
-deepspeed_config: "/viscam/u/tonyzst/Research/test/DPO/config/ds_z1_config.json"
+deepspeed_config: "./config/ds_z1_config.json"

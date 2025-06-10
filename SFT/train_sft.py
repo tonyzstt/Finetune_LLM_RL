@@ -70,8 +70,8 @@ def train(model, dataloader, optimizer, device, scheduler, cfg, save_dir):
                     running_loss = 0.0
                     
                 if iter % save_steps == 0:
-                    model.save_pretrained(f"/viscam/u/tonyzst/Research/test/SFT/models/{save_dir}_{iter}")
-                    tokenizer.save_pretrained(f"/viscam/u/tonyzst/Research/test/SFT/models/{save_dir}_{iter}")
+                    model.save_pretrained(f"./models/{save_dir}_{iter}")
+                    tokenizer.save_pretrained(f"./models/{save_dir}_{iter}")
                 
 
 if __name__ == "__main__":
@@ -114,6 +114,6 @@ if __name__ == "__main__":
     )
     
     train(model, dataloader, optimizer, device, scheduler, config, save_dir)
-    model.save_pretrained(f"/viscam/u/tonyzst/Research/test/SFT/models/{save_dir}")
-    tokenizer.save_pretrained(f"/viscam/u/tonyzst/Research/test/SFT/models/{save_dir}")
+    model.save_pretrained(f"./models/{save_dir}")
+    tokenizer.save_pretrained(f"./models/{save_dir}")
     
