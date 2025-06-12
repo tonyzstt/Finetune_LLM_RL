@@ -31,18 +31,18 @@ Generated datasets will be stored in `./processed_dataset` folder.
 ### Supervised Finetuning
 To finetune the model on the smoltalk dataset, run:
 ```
-python train.py --config config/sft_smol.yaml # You may need to manually modify path the config file
+python train_sft.py --config config/sft_smol.yaml # You may need to manually modify path the config file
 ```
 To finetune the model on the warmstart dataset, run:
 ```
-python train.py --config config/sft_warm.yaml # You may need to manually modify path the config file
+python train_sft.py --config config/sft_warm.yaml # You may need to manually modify path the config file
 ```
 Trained models will be saved in `./SFT/models` folder.
 
 ### Direct Preference Optimization
 To run DPO on the ultrafeedback dataset, run:
 ```
-python train.py # You may need to manually modify path in DPO/config/dpo.yaml
+python train_dpo.py # You may need to manually modify path in DPO/config/dpo.yaml
 ```
 Trained models will be saved in `./DPO/ckpts` folder.
 
